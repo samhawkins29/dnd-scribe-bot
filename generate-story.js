@@ -17,6 +17,7 @@ const Anthropic = require('@anthropic-ai/sdk');
 const config = require('./config');
 const log = require('./logger');
 const { insertSceneBreaks } = require('./transcribe');
+const { classifyTranscriptLines } = require('./classifier');
 
 // ─── Anthropic client ───────────────────────────────────────────────
 
@@ -125,9 +126,14 @@ FAITHFUL NARRATION RULES:
 - Rules outcomes that affect the story (e.g., "the attack hits" or "you fail the save and fall") should be translated into narrative without mentioning game mechanics.
 
 IN-GAME VS OUT-OF-GAME FILTERING:
-- The transcript contains both in-game roleplay and out-of-game chatter. You must filter out out-of-game content and only narrate the in-game events.
-- OUT-OF-GAME content to IGNORE includes: rules discussions ("what do I roll?", "that's a DC 15"), bathroom/food breaks, real-world references, scheduling talk, technical issues ("you're muted", "can you hear me?"), meta-gaming ("should I use my spell slot?"), dice rolling narration ("I got a 17"), and general socializing.
-- IN-GAME content to KEEP includes: character dialogue (in-character speech), action descriptions ("I attack the goblin", "I search the room"), NPC interactions, environmental descriptions from the DM, combat outcomes as narrated by the DM ("the arrow strikes true"), and story/plot developments.
+- The transcript has been pre-classified with tags on each line. Use these tags to guide your filtering:
+  - [IN_GAME] — Character dialogue, actions, in-character speech. USE these lines as the primary source for your narrative.
+  - [NARRATION] — DM describing environments, NPCs, or events. USE these lines — they are authoritative descriptions of what happened.
+  - [META] — Rules discussion, dice rolls, game mechanics. REFERENCE these only for combat/skill check outcomes (e.g., whether an attack hit or missed), but do NOT narrate the mechanics themselves.
+  - [OOC] — Out-of-character chat, real-world talk, breaks, tech issues. IGNORE these lines entirely — they are not part of the story.
+- If the transcript does not have classification tags, fall back to manual filtering:
+  - OUT-OF-GAME content to IGNORE includes: rules discussions ("what do I roll?", "that's a DC 15"), bathroom/food breaks, real-world references, scheduling talk, technical issues ("you're muted", "can you hear me?"), meta-gaming ("should I use my spell slot?"), dice rolling narration ("I got a 17"), and general socializing.
+  - IN-GAME content to KEEP includes: character dialogue (in-character speech), action descriptions ("I attack the goblin", "I search the room"), NPC interactions, environmental descriptions from the DM, combat outcomes as narrated by the DM ("the arrow strikes true"), and story/plot developments.
 
 SPEAKER LABEL HANDLING:
 - The transcript may include speaker labels like "Speaker A:", "Speaker B:", etc. Use the campaign context to identify which speaker is which character based on context clues in their dialogue.
@@ -618,6 +624,9 @@ async function generateStory(transcriptPath, opts = {}) {
   // Pre-process: insert scene breaks at gaps > 30 seconds
   transcript = insertSceneBreaks(transcript);
 
+  // Pre-process: classify each line as IN_GAME / META / OOC / NARRATION
+  transcript = await classifyTranscriptLines(transcript);
+
   const campaignCtx = loadCampaignContext();
   const previousSummaries = loadPreviousChapterSummaries();
 
@@ -854,6 +863,9 @@ async function generateOneShotStory(transcriptPath, opts = {}) {
 
   // Pre-process: insert scene breaks at gaps > 30 seconds
   transcript = insertSceneBreaks(transcript);
+
+  // Pre-process: classify each line as IN_GAME / META / OOC / NARRATION
+  transcript = await classifyTranscriptLines(transcript);
 
   const campaignCtx = loadCampaignContext();
   const previousSummaries = loadPreviousChapterSummaries();

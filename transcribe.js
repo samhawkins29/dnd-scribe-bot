@@ -20,6 +20,139 @@ const { execSync, spawn } = require('child_process');
 const config = require('./config');
 const log = require('./logger');
 
+// ─── Custom Vocabulary for AssemblyAI ─────────────────────────────
+
+/**
+ * Build a flat array of custom vocabulary terms from campaign-context.json
+ * for use as AssemblyAI's `word_boost` parameter. Extracts character names,
+ * NPC names, location names, item names, and setting-specific terms.
+ *
+ * @returns {string[]} Array of unique vocabulary terms to boost
+ */
+function buildCustomVocabulary() {
+  const ctxPath = config.paths.campaignContext;
+  if (!fs.existsSync(ctxPath)) {
+    log.info('No campaign-context.json found — skipping custom vocabulary');
+    return [];
+  }
+
+  let ctx;
+  try {
+    ctx = JSON.parse(fs.readFileSync(ctxPath, 'utf-8'));
+  } catch (err) {
+    log.warn('Failed to parse campaign-context.json for vocabulary', { error: err.message });
+    return [];
+  }
+
+  const terms = new Set();
+
+  // Campaign name and setting terms
+  if (ctx.campaignName) terms.add(ctx.campaignName);
+
+  // Player character names
+  if (Array.isArray(ctx.playerCharacters)) {
+    for (const pc of ctx.playerCharacters) {
+      if (pc.name) terms.add(pc.name);
+    }
+  }
+
+  // Inactive character names
+  if (Array.isArray(ctx.inactiveCharacters)) {
+    for (const ic of ctx.inactiveCharacters) {
+      if (ic.name) terms.add(ic.name);
+    }
+  }
+
+  // Recurring NPC names
+  if (Array.isArray(ctx.recurringNPCs)) {
+    for (const npc of ctx.recurringNPCs) {
+      if (npc.name) terms.add(npc.name);
+    }
+  }
+
+  // Location names
+  if (Array.isArray(ctx.locationsVisited)) {
+    for (const loc of ctx.locationsVisited) {
+      if (loc) terms.add(loc);
+    }
+  }
+
+  // Item names
+  if (Array.isArray(ctx.itemsOfSignificance)) {
+    for (const item of ctx.itemsOfSignificance) {
+      if (item) terms.add(item);
+    }
+  }
+
+  // Flavor bank character and location names
+  if (ctx.flavorBank) {
+    if (ctx.flavorBank.locations) {
+      for (const locName of Object.keys(ctx.flavorBank.locations)) {
+        terms.add(locName);
+      }
+    }
+    if (ctx.flavorBank.characters) {
+      for (const charName of Object.keys(ctx.flavorBank.characters)) {
+        terms.add(charName);
+      }
+    }
+  }
+
+  const vocabulary = Array.from(terms).filter(t => t && t.trim().length > 0);
+  log.info('Built custom vocabulary for transcription', { termCount: vocabulary.length });
+  return vocabulary;
+}
+
+// ─── Audio Preprocessing with ffmpeg ──────────────────────────────
+
+/**
+ * Pre-process an audio file through ffmpeg to clean it up before
+ * sending to a transcription service. Applies:
+ *   - highpass at 100Hz (remove low-frequency rumble/hum)
+ *   - lowpass at 8000Hz (remove high-frequency noise above voice range)
+ *   - afftdn with noise floor -25dB (adaptive noise reduction)
+ *   - loudnorm (normalize volume levels across speakers)
+ *   - resample to 16kHz mono (optimal for speech recognition)
+ *
+ * If ffmpeg fails for any reason, falls back to the original file.
+ *
+ * @param {string} inputPath  Path to the raw audio file
+ * @returns {string} Path to the cleaned audio file, or the original if preprocessing fails
+ */
+function preprocessAudio(inputPath) {
+  const ext = path.extname(inputPath);
+  const baseName = path.basename(inputPath, ext);
+  const cleanPath = path.join(config.paths.recordings, `${baseName}-clean.ogg`);
+
+  const ffmpegBin = config.audio.ffmpegPath || 'ffmpeg';
+
+  const filterChain = [
+    'highpass=f=100',
+    'lowpass=f=8000',
+    'afftdn=nf=-25',
+    'loudnorm',
+    'aresample=16000',
+  ].join(',');
+
+  const cmd = `"${ffmpegBin}" -y -i "${inputPath}" -af "${filterChain}" -ac 1 "${cleanPath}"`;
+
+  try {
+    log.info('Preprocessing audio with ffmpeg', { input: inputPath, output: cleanPath });
+    execSync(cmd, {
+      encoding: 'utf-8',
+      timeout: 10 * 60 * 1000, // 10 min timeout
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    log.info('Audio preprocessing complete', { cleanPath });
+    return cleanPath;
+  } catch (err) {
+    log.warn('ffmpeg preprocessing failed, falling back to original audio', {
+      error: err.message,
+    });
+    return inputPath;
+  }
+}
+
 // ─── Speaker Map Utilities ─────────────────────────────────────────
 
 /**
@@ -405,6 +538,8 @@ async function transcribeAssemblyAI(audioPath) {
       language_code: 'en',
       speakers_expected: 5,
       speech_models: ['universal-3-pro'],
+      word_boost: buildCustomVocabulary(),
+      boost_param: 'high',
     }),
   });
 
@@ -555,16 +690,22 @@ async function transcribe(audioPath, opts = {}) {
 
   log.info(`Starting transcription`, { service, file: resolvedPath });
 
+  // Pre-process audio through ffmpeg for cleaner transcription
+  const processedPath = preprocessAudio(resolvedPath);
+  if (processedPath !== resolvedPath) {
+    log.info('Using preprocessed audio', { original: resolvedPath, processed: processedPath });
+  }
+
   let transcript;
   switch (service) {
     case 'whisper-local':
-      transcript = await transcribeWhisperLocal(resolvedPath);
+      transcript = await transcribeWhisperLocal(processedPath);
       break;
     case 'assemblyai':
-      transcript = await transcribeAssemblyAI(resolvedPath);
+      transcript = await transcribeAssemblyAI(processedPath);
       break;
     case 'deepgram':
-      transcript = await transcribeDeepgram(resolvedPath);
+      transcript = await transcribeDeepgram(processedPath);
       break;
     default:
       throw new Error(`Unknown transcription service: ${service}`);
@@ -692,4 +833,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { transcribe, findLatestRecording, insertSceneBreaks };
+module.exports = { transcribe, findLatestRecording, insertSceneBreaks, buildCustomVocabulary, preprocessAudio };
