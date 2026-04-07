@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+
+# Environment
+.env
+
+# Recordings (large audio files)
+recordings/*.ogg
+recordings/*.pcm
+recordings/*.wav
+recordings/*.mp3
+recordings/_tmp_*
+
+# Transcripts (generated content)
+transcripts/
+
+# Stories - ignore generated chapters/oneshots, keep campaign-log and verification-history
+stories/chapter-*.md
+stories/oneshot-*.md
+
+# Logs
+logs/
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo

@@ -1,0 +1,1296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>D&D Scribe Bot</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Inter:wght@300;400;500;600&family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+  <style>
+    /* ═══ Reset & Base ═══════════════════════════════════════════ */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg-darkest: #0a0a0f;
+      --bg-dark: #12121a;
+      --bg-card: #1a1a26;
+      --bg-card-hover: #22222f;
+      --bg-input: #15151f;
+      --border: #2a2a3a;
+      --border-light: #3a3a4a;
+      --text: #e0e0e8;
+      --text-dim: #8888a0;
+      --text-muted: #5a5a72;
+      --accent: #c9a84c;
+      --accent-dim: #a08030;
+      --accent-glow: rgba(201, 168, 76, 0.15);
+      --red: #e74c4c;
+      --red-dim: rgba(231, 76, 76, 0.15);
+      --green: #4ce774;
+      --green-dim: rgba(76, 231, 116, 0.15);
+      --blue: #4c8ce7;
+      --blue-dim: rgba(76, 140, 231, 0.15);
+      --purple: #9b59b6;
+      --font-display: 'Cinzel', serif;
+      --font-body: 'Inter', -apple-system, sans-serif;
+      --font-story: 'Crimson Text', Georgia, serif;
+      --radius: 8px;
+      --radius-lg: 12px;
+    }
+
+    html { font-size: 15px; }
+    body {
+      font-family: var(--font-body);
+      background: var(--bg-darkest);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ═══ Layout ═════════════════════════════════════════════════ */
+    .app { display: flex; min-height: 100vh; }
+
+    .sidebar {
+      width: 240px;
+      background: var(--bg-dark);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      position: fixed;
+      top: 0; left: 0; bottom: 0;
+      z-index: 100;
+    }
+
+    .sidebar-header {
+      padding: 24px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .sidebar-header h1 {
+      font-family: var(--font-display);
+      font-size: 1.15rem;
+      color: var(--accent);
+      letter-spacing: 0.05em;
+    }
+
+    .sidebar-header .subtitle {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      margin-top: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+
+    .nav { flex: 1; padding: 12px 0; }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 20px;
+      color: var(--text-dim);
+      cursor: pointer;
+      transition: all 0.15s;
+      font-size: 0.87rem;
+      font-weight: 500;
+      border-left: 3px solid transparent;
+    }
+
+    .nav-item:hover { color: var(--text); background: rgba(255,255,255,0.03); }
+    .nav-item.active {
+      color: var(--accent);
+      background: var(--accent-glow);
+      border-left-color: var(--accent);
+    }
+
+    .nav-item svg { width: 18px; height: 18px; flex-shrink: 0; }
+
+    .main {
+      margin-left: 240px;
+      flex: 1;
+      padding: 32px;
+      max-width: 1100px;
+    }
+
+    /* ═══ Panels ═════════════════════════════════════════════════ */
+    .panel { display: none; }
+    .panel.active { display: block; }
+
+    .panel-title {
+      font-family: var(--font-display);
+      font-size: 1.5rem;
+      color: var(--accent);
+      margin-bottom: 24px;
+      letter-spacing: 0.03em;
+    }
+
+    /* ═══ Cards ══════════════════════════════════════════════════ */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    .card-title {
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+
+    /* ═══ Quick Start ════════════════════════════════════════════ */
+    .quick-start {
+      background: linear-gradient(135deg, #1a1520 0%, #1a1a26 100%);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 40px;
+      text-align: center;
+      margin-bottom: 24px;
+    }
+
+    .quick-start h2 {
+      font-family: var(--font-display);
+      color: var(--accent);
+      font-size: 1.2rem;
+      margin-bottom: 8px;
+    }
+
+    .quick-start p { color: var(--text-dim); font-size: 0.85rem; margin-bottom: 24px; }
+
+    .big-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 36px;
+      font-size: 1rem;
+      font-weight: 600;
+      font-family: var(--font-display);
+      border: none;
+      border-radius: var(--radius-lg);
+      cursor: pointer;
+      transition: all 0.2s;
+      letter-spacing: 0.04em;
+    }
+
+    .big-btn.start {
+      background: linear-gradient(135deg, var(--accent) 0%, #d4af37 100%);
+      color: #0a0a0f;
+      box-shadow: 0 4px 20px rgba(201, 168, 76, 0.3);
+    }
+    .big-btn.start:hover { transform: translateY(-2px); box-shadow: 0 6px 28px rgba(201, 168, 76, 0.4); }
+
+    .big-btn.stop {
+      background: var(--red);
+      color: white;
+      box-shadow: 0 4px 20px rgba(231, 76, 76, 0.3);
+    }
+    .big-btn.stop:hover { transform: translateY(-2px); }
+
+    .big-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important; }
+
+    .session-timer {
+      font-family: var(--font-display);
+      font-size: 2.5rem;
+      color: var(--accent);
+      margin: 20px 0;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ═══ Status indicators ══════════════════════════════════════ */
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .status-item {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .status-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .status-dot.online { background: var(--green); box-shadow: 0 0 8px rgba(76, 231, 116, 0.5); }
+    .status-dot.offline { background: var(--red); }
+    .status-dot.recording { background: var(--red); animation: pulse 1.5s infinite; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; box-shadow: 0 0 8px rgba(231, 76, 76, 0.5); }
+      50% { opacity: 0.5; box-shadow: 0 0 16px rgba(231, 76, 76, 0.8); }
+    }
+
+    .status-label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; }
+    .status-value { font-size: 0.9rem; font-weight: 500; }
+
+    /* ═══ Buttons ═════════════════════════════════════════════════ */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 14px;
+      font-size: 0.8rem;
+      font-weight: 500;
+      font-family: var(--font-body);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      cursor: pointer;
+      transition: all 0.15s;
+      background: var(--bg-card);
+      color: var(--text);
+    }
+    .btn:hover { border-color: var(--accent); color: var(--accent); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .btn-accent {
+      background: var(--accent);
+      color: #0a0a0f;
+      border-color: var(--accent);
+      font-weight: 600;
+    }
+    .btn-accent:hover { background: #d4af37; color: #0a0a0f; }
+
+    .btn-sm { padding: 4px 10px; font-size: 0.75rem; }
+
+    /* ═══ Badge ═══════════════════════════════════════════════════ */
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      font-size: 0.65rem;
+      font-weight: 600;
+      border-radius: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .badge-green { background: var(--green-dim); color: var(--green); }
+    .badge-blue { background: var(--blue-dim); color: var(--blue); }
+    .badge-dim { background: rgba(255,255,255,0.05); color: var(--text-muted); }
+
+    /* ═══ Tables ══════════════════════════════════════════════════ */
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th {
+      text-align: left;
+      padding: 10px 12px;
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      border-bottom: 1px solid var(--border);
+    }
+    td {
+      padding: 12px;
+      font-size: 0.85rem;
+      border-bottom: 1px solid rgba(255,255,255,0.03);
+      vertical-align: middle;
+    }
+    tr:hover td { background: rgba(255,255,255,0.02); }
+
+    /* ═══ Story Reader ═══════════════════════════════════════════ */
+    .story-reader {
+      background: linear-gradient(135deg, #1e1a14 0%, #1a1816 100%);
+      border: 1px solid #3a3020;
+      border-radius: var(--radius-lg);
+      padding: 48px;
+      max-width: 720px;
+      margin: 0 auto;
+      position: relative;
+    }
+
+    .story-reader::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: var(--radius-lg);
+      background: url("data:image/svg+xml,%3Csvg width='100' height='100' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='0.65' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+      pointer-events: none;
+    }
+
+    .story-reader h1 {
+      font-family: var(--font-display);
+      font-size: 1.6rem;
+      color: var(--accent);
+      text-align: center;
+      margin-bottom: 32px;
+      position: relative;
+    }
+
+    .story-reader h1::after {
+      content: '~';
+      display: block;
+      margin-top: 12px;
+      font-size: 1.2rem;
+      color: var(--accent-dim);
+    }
+
+    .story-content {
+      font-family: var(--font-story);
+      font-size: 1.12rem;
+      line-height: 1.85;
+      color: #d4cfc0;
+      position: relative;
+    }
+
+    .story-content p { margin-bottom: 1.2em; text-indent: 1.5em; }
+    .story-content p:first-of-type { text-indent: 0; }
+    .story-content p:first-of-type::first-letter {
+      font-family: var(--font-display);
+      font-size: 3.2em;
+      float: left;
+      line-height: 0.8;
+      margin: 4px 8px 0 0;
+      color: var(--accent);
+    }
+    .story-content em { font-style: italic; color: #c4bfa0; }
+    .story-content hr {
+      border: none;
+      text-align: center;
+      margin: 2em 0;
+      color: var(--accent-dim);
+    }
+    .story-content hr::before { content: '* * *'; letter-spacing: 0.5em; }
+
+    .story-back {
+      text-align: center;
+      margin-top: 32px;
+    }
+
+    /* ═══ Forms ═══════════════════════════════════════════════════ */
+    .form-group { margin-bottom: 16px; }
+    .form-group label {
+      display: block;
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .form-control {
+      width: 100%;
+      padding: 9px 12px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-family: var(--font-body);
+      font-size: 0.85rem;
+      transition: border-color 0.15s;
+    }
+    .form-control:focus { outline: none; border-color: var(--accent); }
+
+    select.form-control { cursor: pointer; }
+    textarea.form-control { resize: vertical; min-height: 80px; }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    /* ═══ Character Cards ════════════════════════════════════════ */
+    .char-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+
+    .char-card .char-name {
+      font-family: var(--font-display);
+      font-size: 1rem;
+      color: var(--accent);
+    }
+
+    .char-card .char-meta {
+      font-size: 0.8rem;
+      color: var(--text-dim);
+      margin: 4px 0 8px;
+    }
+
+    .char-card .char-backstory {
+      font-size: 0.85rem;
+      line-height: 1.5;
+      color: var(--text);
+    }
+
+    /* ═══ Pipeline Progress ══════════════════════════════════════ */
+    .progress-bar {
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+      margin-top: 12px;
+    }
+    .progress-bar .fill {
+      height: 100%;
+      background: var(--accent);
+      transition: width 0.5s;
+      border-radius: 2px;
+    }
+
+    .log-output {
+      background: #0c0c12;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px;
+      font-family: 'Consolas', monospace;
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      max-height: 200px;
+      overflow-y: auto;
+      margin-top: 12px;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    /* ═══ Misc ═══════════════════════════════════════════════════ */
+    .empty-state {
+      text-align: center;
+      padding: 48px 20px;
+      color: var(--text-muted);
+    }
+    .empty-state svg { margin-bottom: 12px; opacity: 0.3; }
+    .empty-state p { font-size: 0.9rem; }
+
+    .flex-between { display: flex; justify-content: space-between; align-items: center; }
+    .gap-8 { gap: 8px; display: flex; align-items: center; }
+    .mt-16 { margin-top: 16px; }
+    .mb-16 { margin-bottom: 16px; }
+    .text-muted { color: var(--text-muted); }
+    .text-accent { color: var(--accent); }
+  </style>
+</head>
+<body>
+<div class="app">
+  <!-- ═══ Sidebar ═══════════════════════════════════════════════ -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <h1>D&D Scribe</h1>
+      <div class="subtitle">Session Chronicler</div>
+    </div>
+    <nav class="nav">
+      <div class="nav-item active" data-panel="dashboard" onclick="switchPanel('dashboard')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        Dashboard
+      </div>
+      <div class="nav-item" data-panel="recordings" onclick="switchPanel('recordings')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+        Recordings
+      </div>
+      <div class="nav-item" data-panel="stories" onclick="switchPanel('stories')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
+        Stories
+      </div>
+      <div class="nav-item" data-panel="campaign" onclick="switchPanel('campaign')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.5 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V7.5L14.5 2z"/><polyline points="14,2 14,8 20,8"/></svg>
+        Campaign
+      </div>
+      <div class="nav-item" data-panel="settings" onclick="switchPanel('settings')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+        Settings
+      </div>
+    </nav>
+    <div style="padding:16px 20px; border-top:1px solid var(--border);">
+      <div class="status-label">Bot Status</div>
+      <div class="gap-8 mt-16" style="margin-top:6px;">
+        <span class="status-dot" id="sidebar-dot"></span>
+        <span id="sidebar-status" style="font-size:0.8rem;">Offline</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ═══ Main Content ══════════════════════════════════════════ -->
+  <div class="main">
+
+    <!-- ── Dashboard Panel ──────────────────────────────────── -->
+    <div class="panel active" id="panel-dashboard">
+      <h2 class="panel-title">Command Center</h2>
+
+      <div class="quick-start" id="quick-start">
+        <h2>Session Control</h2>
+        <p id="qs-subtitle">Start your bot and begin recording your D&D session</p>
+        <div class="session-timer" id="session-timer" style="display:none;">00:00:00</div>
+        <div>
+          <button class="big-btn start" id="btn-start-session" onclick="startSession()">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
+            Start Session
+          </button>
+          <button class="big-btn stop" id="btn-stop-session" onclick="stopSession()" style="display:none;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
+            End Session
+          </button>
+        </div>
+      </div>
+
+      <div class="status-grid">
+        <div class="status-item">
+          <span class="status-dot" id="status-bot-dot"></span>
+          <div>
+            <div class="status-label">Discord Bot</div>
+            <div class="status-value" id="status-bot-text">Offline</div>
+          </div>
+        </div>
+        <div class="status-item">
+          <span class="status-dot" id="status-rec-dot"></span>
+          <div>
+            <div class="status-label">Recording</div>
+            <div class="status-value" id="status-rec-text">Idle</div>
+          </div>
+        </div>
+        <div class="status-item">
+          <span class="status-dot" id="status-pipe-dot"></span>
+          <div>
+            <div class="status-label">Pipeline</div>
+            <div class="status-value" id="status-pipe-text">Idle</div>
+          </div>
+        </div>
+        <div class="status-item">
+          <div>
+            <div class="status-label">Channel</div>
+            <div class="status-value" id="status-channel">—</div>
+          </div>
+        </div>
+      </div>
+
+      <div id="pipeline-progress" style="display:none;">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Processing Pipeline</span>
+            <span class="badge badge-blue" id="pipe-step-badge">Transcribing</span>
+          </div>
+          <div class="progress-bar"><div class="fill" id="pipe-progress-fill" style="width:0%"></div></div>
+          <div class="log-output" id="pipe-log"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Recordings Panel ─────────────────────────────────── -->
+    <div class="panel" id="panel-recordings">
+      <div class="flex-between mb-16">
+        <h2 class="panel-title" style="margin-bottom:0">Recordings</h2>
+        <button class="btn" onclick="loadRecordings()">Refresh</button>
+      </div>
+      <div class="card">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Date</th><th>File</th><th>Size</th><th>Status</th><th>Actions</th></tr>
+            </thead>
+            <tbody id="recordings-table"></tbody>
+          </table>
+        </div>
+        <div class="empty-state" id="recordings-empty" style="display:none;">
+          <p>No recordings yet. Start a session to create your first recording.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Stories Panel ────────────────────────────────────── -->
+    <div class="panel" id="panel-stories">
+      <div class="flex-between mb-16">
+        <h2 class="panel-title" style="margin-bottom:0">Chronicles</h2>
+        <button class="btn" onclick="loadStories()">Refresh</button>
+      </div>
+
+      <div id="stories-list">
+        <div class="card">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Chapter</th><th>Title</th><th>Words</th><th>Date</th><th>Actions</th></tr>
+              </thead>
+              <tbody id="stories-table"></tbody>
+            </table>
+          </div>
+          <div class="empty-state" id="stories-empty" style="display:none;">
+            <p>No stories generated yet. Process a recording to create your first chapter.</p>
+          </div>
+        </div>
+      </div>
+
+      <div id="story-view" style="display:none;">
+        <div class="story-back mb-16">
+          <button class="btn" onclick="closeStoryView()">Back to Stories</button>
+        </div>
+        <div class="story-reader">
+          <div class="story-content" id="story-content"></div>
+        </div>
+        <div class="story-back mt-16">
+          <div class="gap-8" style="justify-content:center;">
+            <button class="btn" onclick="downloadStory('md')">Download Markdown</button>
+            <button class="btn" onclick="closeStoryView()">Back</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Campaign Panel ───────────────────────────────────── -->
+    <div class="panel" id="panel-campaign">
+      <h2 class="panel-title">Campaign Lore</h2>
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Campaign Details</span>
+          <button class="btn btn-accent btn-sm" onclick="saveCampaign()">Save Changes</button>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Campaign Name</label>
+            <input class="form-control" id="camp-name" placeholder="The Sundering of Aethermoor">
+          </div>
+          <div class="form-group">
+            <label>Setting</label>
+            <input class="form-control" id="camp-setting" placeholder="High fantasy medieval world">
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Player Characters</span>
+          <button class="btn btn-sm" onclick="addCharacter()">+ Add Character</button>
+        </div>
+        <div id="characters-list"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Recurring NPCs</span>
+          <button class="btn btn-sm" onclick="addNPC()">+ Add NPC</button>
+        </div>
+        <div id="npcs-list"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Plot Threads</span>
+          <button class="btn btn-sm" onclick="addPlotThread()">+ Add Thread</button>
+        </div>
+        <div id="plot-threads-list"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><span class="card-title">Locations & Items</span></div>
+        <div class="form-group">
+          <label>Locations Visited (comma-separated)</label>
+          <input class="form-control" id="camp-locations" placeholder="Millhaven, The Thornwood, Kingsport">
+        </div>
+        <div class="form-group">
+          <label>Items of Significance (comma-separated)</label>
+          <input class="form-control" id="camp-items" placeholder="The Ashen Blade, Coded Journal">
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Settings Panel ───────────────────────────────────── -->
+    <div class="panel" id="panel-settings">
+      <h2 class="panel-title">Settings</h2>
+
+      <div class="card">
+        <div class="card-header"><span class="card-title">API Keys</span></div>
+        <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:16px;">
+          Keys are stored in your .env file. Edit the file directly to change them.
+          Use the test buttons to verify connectivity.
+        </p>
+        <div class="form-group">
+          <label>Discord Bot Token</label>
+          <div class="gap-8">
+            <input class="form-control" id="set-discord" readonly style="flex:1">
+            <button class="btn btn-sm" onclick="testConnection('discord')">Test</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Anthropic API Key</label>
+          <div class="gap-8">
+            <input class="form-control" id="set-anthropic" readonly style="flex:1">
+            <button class="btn btn-sm" onclick="testConnection('anthropic')">Test</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>AssemblyAI Key</label>
+          <input class="form-control" id="set-assemblyai" readonly>
+        </div>
+        <div class="form-group">
+          <label>Deepgram Key</label>
+          <input class="form-control" id="set-deepgram" readonly>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><span class="card-title">Preferences</span></div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Transcription Service</label>
+            <select class="form-control" id="set-transcription">
+              <option value="whisper-local">Whisper (Local, Free)</option>
+              <option value="assemblyai">AssemblyAI (Cloud)</option>
+              <option value="deepgram">Deepgram (Cloud)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Default Story Style</label>
+            <select class="form-control" id="set-style">
+              <option value="martin">George R.R. Martin</option>
+              <option value="sanderson">Brandon Sanderson</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Audio Format</label>
+            <select class="form-control" id="set-audio">
+              <option value="ogg">OGG Opus (smaller)</option>
+              <option value="pcm">Raw PCM (lossless)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Whisper Model</label>
+            <select class="form-control" id="set-whisper-model">
+              <option value="tiny">Tiny (fastest)</option>
+              <option value="base">Base (balanced)</option>
+              <option value="small">Small</option>
+              <option value="medium">Medium</option>
+              <option value="large">Large (best)</option>
+            </select>
+          </div>
+        </div>
+        <p style="font-size:0.75rem;color:var(--text-muted);margin-top:8px;">
+          Note: Changing these settings here shows the current configuration.
+          To persist changes, edit the <code>.env</code> file in the project root.
+        </p>
+      </div>
+
+      <div id="test-result" style="display:none;" class="card">
+        <div id="test-result-text"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════
+//  Socket.IO & State
+// ═══════════════════════════════════════════════════════════════════
+
+const socket = io();
+let currentStatus = {};
+let timerInterval = null;
+let campaignData = {};
+let currentStoryFile = '';
+
+socket.on('status', (status) => {
+  currentStatus = status;
+  updateStatusUI(status);
+});
+
+socket.on('pipeline-log', (msg) => {
+  const el = document.getElementById('pipe-log');
+  if (el) { el.textContent += msg; el.scrollTop = el.scrollHeight; }
+});
+
+socket.on('pipeline-done', (data) => {
+  if (data.success) {
+    loadRecordings();
+    loadStories();
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+//  Navigation
+// ═══════════════════════════════════════════════════════════════════
+
+function switchPanel(name) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('panel-' + name)?.classList.add('active');
+  document.querySelector(`.nav-item[data-panel="${name}"]`)?.classList.add('active');
+
+  if (name === 'recordings') loadRecordings();
+  if (name === 'stories') loadStories();
+  if (name === 'campaign') loadCampaign();
+  if (name === 'settings') loadSettings();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Status UI
+// ═══════════════════════════════════════════════════════════════════
+
+function updateStatusUI(s) {
+  // Sidebar
+  const sidebarDot = document.getElementById('sidebar-dot');
+  const sidebarStatus = document.getElementById('sidebar-status');
+  sidebarDot.className = 'status-dot ' + (s.botOnline ? 'online' : 'offline');
+  sidebarStatus.textContent = s.botOnline ? 'Online' : 'Offline';
+
+  // Status grid
+  document.getElementById('status-bot-dot').className = 'status-dot ' + (s.botOnline ? 'online' : 'offline');
+  document.getElementById('status-bot-text').textContent = s.botOnline ? 'Online' : 'Offline';
+
+  document.getElementById('status-rec-dot').className = 'status-dot ' + (s.recording ? 'recording' : 'offline');
+  document.getElementById('status-rec-text').textContent = s.recording ? 'Recording...' : 'Idle';
+
+  const pipeText = s.pipelineRunning ? s.pipelineStep : 'Idle';
+  document.getElementById('status-pipe-dot').className = 'status-dot ' + (s.pipelineRunning ? 'online' : 'offline');
+  document.getElementById('status-pipe-text').textContent = pipeText.charAt(0).toUpperCase() + pipeText.slice(1);
+
+  document.getElementById('status-channel').textContent = s.connectedChannel || '—';
+
+  // Quick start buttons
+  if (s.recording) {
+    document.getElementById('btn-start-session').style.display = 'none';
+    document.getElementById('btn-stop-session').style.display = 'inline-flex';
+    document.getElementById('session-timer').style.display = 'block';
+    document.getElementById('qs-subtitle').textContent = 'Session in progress — recording audio';
+    startTimer(s.recordingStart);
+  } else {
+    document.getElementById('btn-start-session').style.display = 'inline-flex';
+    document.getElementById('btn-stop-session').style.display = 'none';
+    document.getElementById('session-timer').style.display = 'none';
+    document.getElementById('qs-subtitle').textContent = 'Start your bot and begin recording your D&D session';
+    stopTimer();
+  }
+
+  // Pipeline progress
+  const pipeEl = document.getElementById('pipeline-progress');
+  if (s.pipelineRunning) {
+    pipeEl.style.display = 'block';
+    const fill = s.pipelineStep === 'transcribing' ? '33%' : s.pipelineStep === 'generating' ? '66%' : '100%';
+    document.getElementById('pipe-progress-fill').style.width = fill;
+    document.getElementById('pipe-step-badge').textContent = s.pipelineStep === 'transcribing' ? 'Transcribing' : 'Generating Story';
+  } else if (s.pipelineStep === 'complete') {
+    document.getElementById('pipe-progress-fill').style.width = '100%';
+    document.getElementById('pipe-step-badge').textContent = 'Complete';
+    setTimeout(() => { pipeEl.style.display = 'none'; }, 5000);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Timer
+// ═══════════════════════════════════════════════════════════════════
+
+function startTimer(startISO) {
+  stopTimer();
+  const start = startISO ? new Date(startISO).getTime() : Date.now();
+  const el = document.getElementById('session-timer');
+  timerInterval = setInterval(() => {
+    const diff = Math.floor((Date.now() - start) / 1000);
+    const h = String(Math.floor(diff / 3600)).padStart(2, '0');
+    const m = String(Math.floor((diff % 3600) / 60)).padStart(2, '0');
+    const s = String(diff % 60).padStart(2, '0');
+    el.textContent = `${h}:${m}:${s}`;
+  }, 1000);
+}
+
+function stopTimer() {
+  if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Session Control
+// ═══════════════════════════════════════════════════════════════════
+
+async function startSession() {
+  const btn = document.getElementById('btn-start-session');
+  btn.disabled = true;
+  btn.textContent = 'Starting...';
+
+  if (!currentStatus.botOnline) {
+    await fetch('/api/bot/start', { method: 'POST' });
+    // The bot will auto-join when a user types !record in Discord
+    // Show instructions
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg> Start Session';
+    alert('Bot is starting! Once it\\'s online, type !record in your Discord text channel while in a voice channel.');
+    return;
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg> Start Session';
+  alert('Bot is online! Type !record in your Discord text channel while in a voice channel to start recording.');
+}
+
+async function stopSession() {
+  alert('Type !stop in your Discord text channel to stop recording. The pipeline will start automatically from the Recordings tab.');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Bot Control
+// ═══════════════════════════════════════════════════════════════════
+
+async function startBot() {
+  await fetch('/api/bot/start', { method: 'POST' });
+}
+
+async function stopBot() {
+  await fetch('/api/bot/stop', { method: 'POST' });
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Recordings
+// ═══════════════════════════════════════════════════════════════════
+
+async function loadRecordings() {
+  const res = await fetch('/api/recordings');
+  const recordings = await res.json();
+  const tbody = document.getElementById('recordings-table');
+  const empty = document.getElementById('recordings-empty');
+
+  if (recordings.length === 0) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+
+  tbody.innerHTML = recordings.map(r => `
+    <tr>
+      <td>${r.date}</td>
+      <td style="font-family:monospace;font-size:0.8rem;">${r.filename}</td>
+      <td>${r.size}</td>
+      <td>
+        ${r.hasStory ? '<span class="badge badge-green">Story Ready</span>' :
+          r.hasTranscript ? '<span class="badge badge-blue">Transcribed</span>' :
+          '<span class="badge badge-dim">Recorded</span>'}
+      </td>
+      <td>
+        <div class="gap-8">
+          <button class="btn btn-sm btn-accent" onclick="processRecording('${r.filename}')"
+            ${currentStatus.pipelineRunning ? 'disabled' : ''}>
+            Process
+          </button>
+          <select class="form-control" style="width:auto;padding:3px 6px;font-size:0.75rem;" id="style-${r.filename}">
+            <option value="martin">GRRM</option>
+            <option value="sanderson">Sanderson</option>
+          </select>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+async function processRecording(filename) {
+  const styleSelect = document.getElementById('style-' + filename);
+  const style = styleSelect ? styleSelect.value : 'martin';
+
+  document.getElementById('pipe-log').textContent = '';
+  document.getElementById('pipeline-progress').style.display = 'block';
+
+  await fetch('/api/recordings/process', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ filename, style }),
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Stories
+// ═══════════════════════════════════════════════════════════════════
+
+async function loadStories() {
+  const res = await fetch('/api/stories');
+  const stories = await res.json();
+  const tbody = document.getElementById('stories-table');
+  const empty = document.getElementById('stories-empty');
+
+  if (stories.length === 0) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+
+  tbody.innerHTML = stories.map((s, i) => `
+    <tr>
+      <td style="font-family:var(--font-display);color:var(--accent);">${stories.length - i}</td>
+      <td>${s.title}</td>
+      <td>${s.wordCount.toLocaleString()}</td>
+      <td>${s.modified.slice(0,10)}</td>
+      <td>
+        <div class="gap-8">
+          <button class="btn btn-sm btn-accent" onclick="readStory('${s.filename}')">Read</button>
+          <button class="btn btn-sm" onclick="regenerateStory('${s.filename}')">Regen</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+async function readStory(filename) {
+  const res = await fetch('/api/stories/' + filename);
+  const data = await res.json();
+  currentStoryFile = filename;
+
+  // Simple markdown → HTML conversion
+  let html = data.content
+    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/\*\*\*|---/gm, '<hr>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/\n\n/g, '</p><p>')
+    .replace(/^\* \* \*$/gm, '<hr>');
+
+  if (!html.startsWith('<')) html = '<p>' + html;
+  if (!html.endsWith('>')) html += '</p>';
+
+  document.getElementById('story-content').innerHTML = html;
+  document.getElementById('stories-list').style.display = 'none';
+  document.getElementById('story-view').style.display = 'block';
+}
+
+function closeStoryView() {
+  document.getElementById('stories-list').style.display = 'block';
+  document.getElementById('story-view').style.display = 'none';
+}
+
+async function regenerateStory(filename) {
+  const style = prompt('Choose style: martin or sanderson', 'martin');
+  if (!style) return;
+  await fetch('/api/stories/regenerate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ storyFilename: filename, style }),
+  });
+}
+
+function downloadStory(format) {
+  if (!currentStoryFile) return;
+  // For markdown, just open the file content in a new tab
+  window.open('/api/stories/' + currentStoryFile, '_blank');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Campaign
+// ═══════════════════════════════════════════════════════════════════
+
+async function loadCampaign() {
+  const res = await fetch('/api/campaign');
+  campaignData = await res.json();
+
+  document.getElementById('camp-name').value = campaignData.campaignName || '';
+  document.getElementById('camp-setting').value = campaignData.setting || '';
+  document.getElementById('camp-locations').value = (campaignData.locationsVisited || []).join(', ');
+  document.getElementById('camp-items').value = (campaignData.itemsOfSignificance || []).join(', ');
+
+  renderCharacters();
+  renderNPCs();
+  renderPlotThreads();
+}
+
+function renderCharacters() {
+  const list = document.getElementById('characters-list');
+  const chars = campaignData.playerCharacters || [];
+  if (chars.length === 0) {
+    list.innerHTML = '<p class="text-muted" style="padding:8px;font-size:0.85rem;">No characters yet. Click "Add Character" to start.</p>';
+    return;
+  }
+  list.innerHTML = chars.map((c, i) => `
+    <div class="char-card">
+      <div class="flex-between">
+        <div class="char-name">${c.name || 'Unnamed'}</div>
+        <button class="btn btn-sm" onclick="removeCharacter(${i})" style="color:var(--red);border-color:var(--red);">Remove</button>
+      </div>
+      <div class="char-meta">${c.race || '?'} ${c.class || '?'} — Player: ${c.playerName || '?'}</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Name</label>
+          <input class="form-control" value="${c.name || ''}" onchange="updateChar(${i},'name',this.value)">
+        </div>
+        <div class="form-group">
+          <label>Player Name</label>
+          <input class="form-control" value="${c.playerName || ''}" onchange="updateChar(${i},'playerName',this.value)">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Race</label>
+          <input class="form-control" value="${c.race || ''}" onchange="updateChar(${i},'race',this.value)">
+        </div>
+        <div class="form-group">
+          <label>Class</label>
+          <input class="form-control" value="${c.class || ''}" onchange="updateChar(${i},'class',this.value)">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Backstory</label>
+        <textarea class="form-control" onchange="updateChar(${i},'backstory',this.value)">${c.backstory || ''}</textarea>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderNPCs() {
+  const list = document.getElementById('npcs-list');
+  const npcs = campaignData.recurringNPCs || [];
+  if (npcs.length === 0) {
+    list.innerHTML = '<p class="text-muted" style="padding:8px;font-size:0.85rem;">No NPCs yet.</p>';
+    return;
+  }
+  list.innerHTML = npcs.map((n, i) => `
+    <div class="char-card">
+      <div class="flex-between">
+        <div class="char-name">${n.name || 'Unnamed NPC'}</div>
+        <button class="btn btn-sm" onclick="removeNPC(${i})" style="color:var(--red);border-color:var(--red);">Remove</button>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Name</label>
+          <input class="form-control" value="${n.name || ''}" onchange="updateNPC(${i},'name',this.value)">
+        </div>
+        <div class="form-group">
+          <label>Role</label>
+          <input class="form-control" value="${n.role || ''}" onchange="updateNPC(${i},'role',this.value)">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Description</label>
+        <textarea class="form-control" onchange="updateNPC(${i},'description',this.value)">${n.description || ''}</textarea>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderPlotThreads() {
+  const list = document.getElementById('plot-threads-list');
+  const threads = campaignData.majorPlotThreads || [];
+  if (threads.length === 0) {
+    list.innerHTML = '<p class="text-muted" style="padding:8px;font-size:0.85rem;">No plot threads yet.</p>';
+    return;
+  }
+  list.innerHTML = threads.map((t, i) => `
+    <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;">
+      <input class="form-control" value="${t}" onchange="updatePlotThread(${i},this.value)" style="flex:1">
+      <button class="btn btn-sm" onclick="removePlotThread(${i})" style="color:var(--red);border-color:var(--red);">X</button>
+    </div>
+  `).join('');
+}
+
+function updateChar(i, field, value) {
+  if (!campaignData.playerCharacters) campaignData.playerCharacters = [];
+  campaignData.playerCharacters[i][field] = value;
+}
+
+function addCharacter() {
+  if (!campaignData.playerCharacters) campaignData.playerCharacters = [];
+  campaignData.playerCharacters.push({ name: '', playerName: '', race: '', class: '', backstory: '' });
+  renderCharacters();
+}
+
+function removeCharacter(i) {
+  campaignData.playerCharacters.splice(i, 1);
+  renderCharacters();
+}
+
+function updateNPC(i, field, value) {
+  if (!campaignData.recurringNPCs) campaignData.recurringNPCs = [];
+  campaignData.recurringNPCs[i][field] = value;
+}
+
+function addNPC() {
+  if (!campaignData.recurringNPCs) campaignData.recurringNPCs = [];
+  campaignData.recurringNPCs.push({ name: '', role: '', description: '' });
+  renderNPCs();
+}
+
+function removeNPC(i) {
+  campaignData.recurringNPCs.splice(i, 1);
+  renderNPCs();
+}
+
+function updatePlotThread(i, value) {
+  campaignData.majorPlotThreads[i] = value;
+}
+
+function addPlotThread() {
+  if (!campaignData.majorPlotThreads) campaignData.majorPlotThreads = [];
+  campaignData.majorPlotThreads.push('');
+  renderPlotThreads();
+}
+
+function removePlotThread(i) {
+  campaignData.majorPlotThreads.splice(i, 1);
+  renderPlotThreads();
+}
+
+async function saveCampaign() {
+  campaignData.campaignName = document.getElementById('camp-name').value;
+  campaignData.setting = document.getElementById('camp-setting').value;
+  campaignData.locationsVisited = document.getElementById('camp-locations').value.split(',').map(s => s.trim()).filter(Boolean);
+  campaignData.itemsOfSignificance = document.getElementById('camp-items').value.split(',').map(s => s.trim()).filter(Boolean);
+
+  await fetch('/api/campaign', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(campaignData),
+  });
+  alert('Campaign saved!');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Settings
+// ═══════════════════════════════════════════════════════════════════
+
+async function loadSettings() {
+  const res = await fetch('/api/settings');
+  const s = await res.json();
+
+  document.getElementById('set-discord').value = s.discordToken || '(not set)';
+  document.getElementById('set-anthropic').value = s.anthropicKey || '(not set)';
+  document.getElementById('set-assemblyai').value = s.assemblyaiKey || '(not set)';
+  document.getElementById('set-deepgram').value = s.deepgramKey || '(not set)';
+  document.getElementById('set-transcription').value = s.transcriptionService;
+  document.getElementById('set-style').value = s.defaultStyle;
+  document.getElementById('set-audio').value = s.audioFormat;
+  document.getElementById('set-whisper-model').value = s.whisperModel;
+}
+
+async function testConnection(service) {
+  const resultEl = document.getElementById('test-result');
+  const textEl = document.getElementById('test-result-text');
+  resultEl.style.display = 'block';
+  textEl.textContent = 'Testing...';
+
+  const res = await fetch('/api/settings/test', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ service }),
+  });
+  const data = await res.json();
+
+  textEl.innerHTML = data.success
+    ? `<span style="color:var(--green);">&#10003;</span> ${data.message}`
+    : `<span style="color:var(--red);">&#10007;</span> ${data.message}`;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Init
+// ═══════════════════════════════════════════════════════════════════
+
+(async function init() {
+  const res = await fetch('/api/status');
+  const status = await res.json();
+  updateStatusUI(status);
+})();
+</script>
+</body>
+</html>

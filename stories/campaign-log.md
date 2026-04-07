@@ -1,0 +1,4 @@
+# Campaign Log
+
+### Chapter 1 — 2026-04-05
+The party retreated from the dragon Rustwing's lair after a devastating fire breath attack that knocked both Countess and Frank unconscious. After regrouping, they briefly explored a hobgoblin cave where Breme was engulfed by a gelatinous cube — which the party destroyed — before withdrawing to explore the wilderness, where they discovered the cabin of a murdered dwarf smith named Ned and tracked his body to a clearing where cultists of the Cult of Chaos were performing a blood ritual with a redcap. They defeated the cultists and redcap, buried Ned, and returned to Castle Keep at level three, where Countess spotted Bartho walking inside the keep despite having seen him leave town hours earlier — suggesting the guard may have been replaced by an imposter or doppelganger.

@@ -1,0 +1,44 @@
+{
+  "name": "dnd-scribe-bot",
+  "version": "1.0.0",
+  "description": "Discord bot that records D&D sessions, transcribes them, and generates narrative prose in the style of GRRM or Brandon Sanderson.",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node dashboard/server.js",
+    "bot": "node bot.js",
+    "dashboard": "node dashboard/server.js",
+    "transcribe": "node transcribe.js --latest",
+    "generate": "node generate-story.js --latest",
+    "pipeline": "node run-pipeline.js --latest",
+    "pipeline:martin": "node run-pipeline.js --latest --style martin",
+    "pipeline:sanderson": "node run-pipeline.js --latest --style sanderson",
+    "dispatch": "node dispatch-task.js"
+  },
+  "keywords": [
+    "discord",
+    "dnd",
+    "dungeons-and-dragons",
+    "transcription",
+    "ai",
+    "storytelling"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@discordjs/opus": "^0.9.0",
+    "@discordjs/voice": "^0.19.2",
+    "discord.js": "^14.26.0",
+    "dotenv": "^16.4.0",
+    "express": "^4.21.0",
+    "prism-media": "^1.3.5",
+    "socket.io": "^4.8.0",
+    "sodium-native": "^4.3.0"
+  },
+  "optionalDependencies": {
+    "libsodium-wrappers": "^0.7.16"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

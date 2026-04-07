@@ -1,0 +1,293 @@
+{
+  "campaignName": "The Caves of Chaos",
+  "setting": "A classic high fantasy vibe with a stirring dark undertone just beneath the surface, advanced technology powered by magic is beginning to become more widespread",
+  "playerCharacters": [
+    {
+      "name": "Breme",
+      "player": "Sam",
+      "race": "Human",
+      "class": "Rogue",
+      "level": 2,
+      "backstory": "Breme grew up as an orphan scraping by in Waterdeep's Dock Ward, surviving through pickpocketing, burglary, and running with small-time criminal crews. After a near-fatal job gone wrong, he decided he'd had enough of the endless cycle of theft and fear. He turned his back on his old life and joined the Adventurers Guild, hoping his street-honed skills could finally be used for something better than lining his own pockets. The Guild has just assigned him to a new adventuring group, sending him to meet them at a designated tavern in the North Ward. This is his chance at a fresh start — if he can keep his sticky fingers to himself and prove he's more than just another Dock Ward criminal.",
+      "personalityTraits": "Cynical and street-smart with a dry, sarcastic sense of humor. Quick-witted and talkative, especially when he's trying to hide his nerves. He's actively working on being more honest and reliable, but old habits make him instinctively case every room for valuables and escape routes. Once he warms up to people, he becomes surprisingly loyal and protective.",
+      "bonds": "The Adventurers Guild — they gave him a real shot at redemption when no one else would. Waterdeep's street orphans, whom he quietly tries to help when he can. A small, worn locket containing a faded portrait he believes is his mother. His new adventuring party — he's determined to prove he belongs with them.",
+      "flaws": "Still fights a strong temptation to steal when the opportunity looks too easy, especially under stress. Deeply distrustful of authority figures and institutions. Tends to assume the worst in new situations and people, which can make teamwork difficult at first. His survival instincts sometimes make him act selfishly before thinking of the group.",
+      "appearance": "A scruffy 23-year-old human with messy black hair, sharp blue eyes, and pale skin. Standing 5'4\" tall and weighing 160 lbs, he has a medium build that's wiry and quick rather than muscular. He wears practical dark leathers and a hooded cloak for blending into shadows, with soft boots perfect for silent movement. A faint scar crosses his left cheek. He moves with the fluid, alert grace of someone who's spent years dodging the City Watch."
+    },
+    {
+      "name": "Countess Caith",
+      "player": "Judy",
+      "race": "Silver Dragonborn",
+      "class": "Paladin",
+      "level": 2,
+      "backstory": "Countess Caith had a happy childhood and is the third born child of six noble children born to the Caith clan. The first born is named Baron who is promised to rule and follow in his father's footsteps, the second named Princess is promised to serve and became a priestess to Bahamut, Countess third born is promised to protect becoming a paladin defending the weak, the fourth named Lord is promised to learn studying at the Candle keep library, the fifth called Mistress is promised to the life of secrets to keep and learn them and lastly the sixth named Journey destined to follow her own path. Countess signed up as an adventurer, Castle Keep is her first quest and she is provisioned with coin from her parents: Pyros her father who has a fiery temper with a good and noble soul, Jyna her mother, with a temperament like a thunderstorm and a true sense of justice",
+      "personalityTraits": "Honest, merciful, loves all dragons.",
+      "bonds": "As a third born child I am sworn to fulfil the role of the soldier and protector of the weak. Wears a ring crafted with a miniature of the family castle gifted to her by Mistress, it holds a secret compartment Countess only knows that she will know when it is time to reveal this secret.",
+      "flaws": "Will try to pet any dragon. Refuses to retreat even when outmatched.",
+      "appearance": "A silver dragonborn with scales so fine they seem more like a metallic skin than the scales of a reptile, fit and healthy she has six small horns flanking the upper part of her face with a mane of unruly purple hair mirroring the colour of her eyes it falls from the centre of her horns, tamed into two loose braids so that it stays out of her way during combat. A lean graceful metallic silver tail indicates her noble lineage"
+    },
+    {
+      "name": "Meridio Scientia",
+      "player": "Jono",
+      "race": "Bronze Dragonborn",
+      "class": "Wizard",
+      "level": 2,
+      "backstory": "After the death of his mother and the destruction of a temple of Bahamut in Baldur's Gate, Meridio was taken by his adopted father to the hidden temple of Selune in Candlekeep. Try as he might to become a cleric, he just didn't have the true faith but was more interested in knowledge. The temple master understood and with some guidance from Selune, he turned to the path of knowledge and studied magic to become a wizard. Meridio wears the robes of a priest and carries a holy symbol but he cannot cast any healing magic.",
+      "personalityTraits": "Tries to fight his cowardice, feels stronger with a pack. If someone argues with him, he will argue back. Shouts his spells with delusional grandeur he does not possess. Motto: 'To live is to give, to learn is to earn.'",
+      "bonds": "Learn so he can protect the world. Questions whether there is another way other than violence. Carries rations and copper/silver to give to the poor and struggling.",
+      "flaws": "Cowardly at heart. If someone needs help, he will give everything he has — even to his own detriment. Performs magic with theatrical flair that far exceeds his actual ability.",
+      "appearance": "A bronze dragonborn around the age of 20, with shiny well-cared-for scales. Wears a worn set of acolyte's robes with solid leather boots. Carries a backpack filled with loose assorted pages and parchment, quill, ink, and various scribing implements. His ever-present holy book is filled with spells he has learned and experiments with. A new arcane walking staff is his only visible weapon."
+    },
+    {
+      "name": "Frank Smith",
+      "player": "Jd",
+      "race": "Dwarf",
+      "class": "Fighter",
+      "level": 2,
+      "backstory": "After working in a blacksmith his entire life, Frank's small village just south of Candlekeep was attacked by a roaming band of bandits. He along with a small group of others in the village banded together to fight and drive them off. Afterwards, realizing his stores were plundered, Frank set out on his adventure to find more ore and a safer place for his village to settle.",
+      "personalityTraits": "Practical and hardworking. A craftsman at heart who values honest labor.",
+      "bonds": "Wants to find ore and a safer home for his village.",
+      "flaws": "Still thinks like a blacksmith, not a warrior.",
+      "appearance": "A solid 4'11\" with a beard that goes down to his waist. His hands are scarred from his time in the smithy and has a permanent smell of burnt beard hair."
+    },
+    {
+      "name": "Breme",
+      "level": 3
+    },
+    {
+      "name": "Countess Caith",
+      "level": 3
+    },
+    {
+      "name": "Meridio Scientia",
+      "level": 3
+    },
+    {
+      "name": "Frank Smith",
+      "level": 3
+    }
+  ],
+  "inactiveCharacters": [
+    {
+      "name": "Thrain Ironwatch",
+      "player": "Sam",
+      "race": "Warforged",
+      "class": "Cleric",
+      "level": 2,
+      "status": "inactive - returning in a few weeks",
+      "backstory": "Thrain was once a twelve-year-old hill dwarf farm boy who died protecting his family from goblin raiders. His dying wish to Helm was to protect the helpless. Fourteen years ago, Lantan artificer Zindle Gearwhistle used stolen warforged blueprints and a divine ritual to place the boy's soul into a new iron body. Now a construct guardian of Helm's Hall orphanage in Waterdeep, Thrain has spent the last decade watching over orphaned children with quiet, tireless devotion. A recent vision from Helm has called him to leave the temple and join a band of wandering adventurers, extending his eternal watch to the open road and the weak who travel it.",
+      "personalityTraits": "Stoic and duty-bound, speaks in a calm, slightly metallic monotone. Rarely shows strong emotion, but is deeply protective of the vulnerable, especially children. Quotes Helm's creeds often.",
+      "bonds": "Sworn to never betray his trust as a guardian. Deeply tied to Helm's Hall orphanage and the children he watched over for ten years. Considers High Watcher Kiber Ederick a father figure.",
+      "flaws": "Extremely rigid in his sense of duty — he will not retreat or compromise when innocents are at risk, even if it endangers himself or his allies. Sometimes struggles to understand why mortals need rest, food, or emotional comfort.",
+      "appearance": "A tall, heavily built warforged standing 6'2\" and weighing 280 lbs. Dark iron plating etched with Dethek runes across the brow and chest. A prominent gauntlet holy symbol of Helm is fused to his chestplate. His face is a smooth, featureless metal mask with glowing red eyes and a simple slit for a mouth. Carries a warhammer and shield, moves with deliberate, mechanical precision."
+    }
+  ],
+  "recurringNPCs": [
+    {
+      "name": "Bartho",
+      "role": "Quest giver / Gatehouse Guard / Slacker",
+      "description": "This gullible human recruit spends more time dreaming and drinking fortified wine than patrolling. Distractable. Bartho is easily distracted from his post because he'd rather be doing anything else. Sleepy. Bartho likes to catch a few winks during his shift.",
+      "relationship": "Friendly — has given the party several jobs to give him more time to sleep off a hangover."
+    },
+    {
+      "name": "Cornflower",
+      "role": "Quest giver / Barn Hand",
+      "description": "This spunky forest gnome barn hand isn't afraid to get her hands dirty. Animal Lover. Cornflower's best friends are all barn animals. Idiomatic. Cornflower likes to use animal idioms, such as 'busy bee,' 'chicken out,' and 'hold your horses.'",
+      "relationship": "Friendly - The party has rescued her lost sheep and treated her well."
+    },
+    {
+      "name": "Gala",
+      "role": "Gatehouse Guard",
+      "description": "Though she's memorized all the keep's laws, this human guard still has much to learn. By the Books. Gala clings to the keep's laws—and often recites them aloud—whenever she must make a decision. Naive. Gala believes that life is fair, people mostly tell the truth, and good always prevails.",
+      "relationship": "Indifferent."
+    },
+    {
+      "name": "Kalista",
+      "role": "Quest giver / Blacksmith",
+      "description": "The keep's taciturn, hardworking dwarf smith prefers to let her hammer do the talking. Standoffish. Kalista is curt toward people she doesn't know, especially adventurers. Stern. Kalista never cracks a smile.",
+      "relationship": "Indifferent."
+    },
+    {
+      "name": "Lenk",
+      "role": "Quest giver / Jeweller",
+      "description": "This elderly human jeweler can identify and appraise any gemstone. Faultfinder. Lenk has a knack for spotting flaws, be they in things or people. Pessimistic. Lenk always sees the worst part of any situation.",
+      "relationship": "Indifferent."
+    },
+    {
+      "name": "Ruckus",
+      "role": "Quest giver / Shopkeeper",
+      "description": "The owner of the provisioner's shop is a small halfling but has a big personality. Loud. Ruckus compensates for his short stature by shouting up to taller customers. Everything Has a Place. Despite the mess in his shop, Ruckus always knows exactly where to find just what he's looking for.",
+      "relationship": "Indifferent."
+    },
+    {
+      "name": "Quink",
+      "role": "Quest giver / Banker",
+      "description": "Quink is a miserly rock gnome moneylender. Frugal. Quink never budges on matters of money. Garrulous. Conversations with Quink last twice as long as they should.",
+      "relationship": "Indifferent."
+    },
+    {
+      "name": "Oleira",
+      "role": "Quest giver / Shopkeeper",
+      "description": "This human merchant and mother of two adult sons deals in wares ranging from common trade goods to curious bric-a-brac. Fastidious. Oleira can't stand dusty wares. Every item must be spotless. Parental. Oleira sometimes treats her customers like she does her children.",
+      "relationship": "Friendly - The party killed a slime hiding in her wagon which could have hurt her sons."
+    },
+    {
+      "name": "Yvette",
+      "role": "Bank Guard",
+      "description": "This Human guard exploits her station for selfish ends. Bitter. Yvette thinks the world owes her. Grifter. Yvette is always hunting for new ways to get rich quick.",
+      "relationship": "Indifferent."
+    },
+    {
+      "name": "Haldryck",
+      "role": "Innkeeper",
+      "description": "Jovial and accommodating, The dwarf Haldryck is a fast friend to anyone who visits his inn. Epicurean. Good food and drink are the keys to Haldryck's heart. Overseller. Haldryck advertises his inn's basic necessities—like clean sheets and doors with locks—as luxury amenities.",
+      "relationship": "Friendly - Do good work for him and always pay up front."
+    },
+    {
+      "name": "Umbrusk",
+      "role": "Barkeep",
+      "description": "Umbrusk a human who serves up drinks, food, and gossip at the keep's tavern. Eavesdropper. Umbrusk listens to his patrons' conversations. Good Memory. Umbrusk never forgets a face or name.",
+      "relationship": "Friendly - Victors of the drinking games and pay their tab."
+    },
+    {
+      "name": "Toryn",
+      "role": "Guild Master",
+      "description": "This wheelchair bound human guild master helps her fellow artisans get a good deal for their wares and services. Judgmental. Toryn looks down on artisans who refuse to join the guild. Witty. Toryn says smart things and always has the last word.",
+      "relationship": "Indifferent"
+    },
+    {
+      "name": "Fazzir",
+      "role": "Quest Giver / Priest",
+      "description": "This rock gnome spiritual leader offers counsel and healing to all who seek the temple, loves to tinker and work on magical technology. Altruistic. Fazzir puts the needs of others before his own. Trusting. Fazzir always assumes the best of people.",
+      "relationship": "Friendly - Party helped clear some graffiti off the temple and helped some parishioners."
+    },
+    {
+      "name": "Andrella",
+      "role": "Quest Giver / Captain of the guard",
+      "description": "This human captain is strong, stern, and just. Perfect Posture. Andrella is as strict with her posture as she is with the law. Role Model. Many of the keep's young people admire Andrella and enjoy her goodhearted mentorship.",
+      "relationship": "Indifferent"
+    },
+    {
+      "name": "Shannik",
+      "role": "Quest Giver / Sergeant of the guard",
+      "description": "Captain Andrella's human second in command brooks no evildoers. Brusque. When Shannik can substitute a reply with a grunt, he does so. Shortsighted. Shannik's plans and actions fail to account for long-term repercussions.",
+      "relationship": "Indifferent"
+    },
+    {
+      "name": "Dwern",
+      "role": "Quest Giver / Scribe",
+      "description": "This gruff dwarf scribe prefers the company of books over people. Bookworm. Dwern has read more books than anyone else in the keep. Curmudgeonly. Dwern is ill-tempered toward younger people—which, to him, are most people.",
+      "relationship": "Indifferent"
+    },
+    {
+      "name": "Elandra",
+      "role": "Advisor",
+      "description": "The drow elf Elandra provides guidance to the castellan and citizens of the keep. Cautious. When presented with a choice, Elandra typically prefers the option with the least amount of risk. Complainer. Nothing is ever good enough for Elandra.",
+      "relationship": "Indifferent"
+    },
+    {
+      "name": "Winvarle",
+      "role": "Castellan / Knight",
+      "description": "The keep's noble commander leads his soldiers whenever the keep comes under attack. Idealistic. Winvarle's ideals are rooted in lofty notions of righteousness. Oblivious. While he excels at battle strategy, Winvarle scarcely knows the inner workings of his own keep.",
+      "relationship": "Indifferent"
+    },
+    {
+      "name": "Rustwing",
+      "role": "Treasure Collector",
+      "description": "This baby copper dragon sits upon its meager horde content with her kobold support for now. Petulant. Rustwing is a sulky, irritable dragon, often becoming easily annoyed when not getting her own way. Abandoned. Rustwing misses her parents and has a sadness that the kobolds found her egg unprotected.",
+      "relationship": "Friendly - the Party treated Rustwing with respect and added to her hoard"
+    },
+    {
+      "name": "Tak",
+      "role": "Guard",
+      "description": "A red kobold guard Tak does his best to keep the caves as safe as possible. Loner. Tak witnessed all his fellow guards slain by the party and must protect the caves by himself.",
+      "relationship": "Indifferent - Having witnessed the strength of the party he has no desire for violence"
+    },
+    {
+      "name": "Olp",
+      "role": "Dragon keeper",
+      "description": "A red kobold Olp does his best to keep the dragon fed while attempting to scavenge for treasure. Cowardly. Olp is frightened by obvious signs of power and is quick to surrender",
+      "relationship": "Friendly - Pleased the party calmed down their dragon"
+    },
+    {
+      "name": "Digs",
+      "role": "Dragon keeper",
+      "description": "A red kobold Digs does his best to keep the dragon fed while digging for buried treasure. Cowardly. Digs is frightened by obvious signs of power and is quick to surrender",
+      "relationship": "Friendly - Pleased the party calmed down their dragon"
+    },
+    {
+      "name": "Patricia",
+      "role": "Heavy Drinker / Guard",
+      "description": "A serious dwarf guard who speaks directly and enjoys drinking",
+      "relationship": "Indifferent - 3rd place to the party in a drinking game and somehow lost their 5gp purse"
+    },
+    {
+      "name": "Hugh",
+      "role": "Heavy Drinker / Guard",
+      "description": "A friendly dwarf lives at the tavern enjoys drinking and has a thing for Patricia",
+      "relationship": "Friendly - He was convinced Breme was a stalwart wingman after successfully hooking up with Patricia"
+    },
+    {
+      "name": "Ned",
+      "role": "Missing Smith",
+      "description": "A dwarf smith who was murdered by cultists in a crude ritual. His blood was used in what appears to be a sacrificial ceremony involving a redcap.",
+      "relationship": "Deceased - victim of cult activity"
+    },
+    {
+      "name": "Cindertooth",
+      "role": "Greater Dragon / Potential Mastermind",
+      "description": "A larger, more powerful dragon mentioned in connection to the cave hierarchy. Appears to be orchestrating or commanding the monsters in the Caves of Chaos.",
+      "relationship": "Unknown - Not yet encountered, but evidence suggests they may be the true power behind the chaos"
+    },
+    {
+      "name": "Rustwing",
+      "role": "Treasure Collector",
+      "description": "This baby copper dragon sits upon its meager horde content with her kobold support for now. Petulant. Rustwing is a sulky, irritable dragon, often becoming easily annoyed when not getting her own way. Abandoned. Rustwing misses her parents and has a sadness that the kobolds found her egg unprotected.",
+      "relationship": "Hostile - Rustwing breathed fire on the party, knocking both Frank and Countess unconscious. The party barricaded her door and fled."
+    }
+  ],
+  "majorPlotThreads": [
+    "The party is investigating the appearance of the Caves of Chaos which seems to be attracting all kinds of monsters.",
+    "A mysterious cult has sprung up locally, calling themselves the Cult of Chaos.",
+    "A registered adventurers job is to support the local community ranging from general errands to supporting the local guards.",
+    "Explore the local wilderness and try and keep the roads safer.",
+    "Helm has sent Thrain a vision warning of impending doom emanating from the Caves of Chaos - something far more dangerous than ordinary monsters that may require ultimate sacrifice to defeat.",
+    "Cult activity is escalating to human sacrifice and blood rituals involving redcaps",
+    "There may be imposters or doppelgangers infiltrating Castle Keep, as Bartho was seen in two places at once",
+    "The chaos in the caves appears to be deliberately orchestrated by a hierarchy of monsters, with a greater dragon called Cindertooth potentially at the top",
+    "The party is badly wounded and outmatched by the deeper threats in the Caves of Chaos, needing to regroup and grow stronger before venturing further"
+  ],
+  "locationsVisited": [
+    "Castle Keep",
+    "Caves of Chaos",
+    "Goblin Lair",
+    "Kobold Caves",
+    "Hobgoblin Lair",
+    "Ned's Cabin",
+    "Wilderness surrounding Castle Keep",
+    "Ned's Cabin",
+    "Cult Ritual Clearing"
+  ],
+  "itemsOfSignificance": [
+    "Ned's warhammer and shield",
+    "Studded leather armor from Ned's workshop",
+    "Healing potions found in Ned's cabin",
+    "Rustwing's small hoard",
+    "Goblin loot and treasure"
+  ],
+  "flavorBank": {
+    "locations": {
+      "Castle Keep": "The stone walls carry the faint smell of woodsmoke and damp stone. Guards patrol the ramparts in pairs.",
+      "Caves of Chaos": "The air grows thick and stale. Water drips somewhere in the darkness, each drop echoing off unseen walls.",
+      "The Wilderness": "Ancient trees press close, their canopy blocking most sunlight. The forest floor is soft with decades of fallen leaves."
+    },
+    "characters": {
+      "Breme": "He moves with the fluid, alert grace of someone who's spent years dodging the City Watch.",
+      "Countess Caith": "Her silver scales catch the light like liquid mercury, purple braids swinging behind her."
+    },
+    "general": [
+      "Magic hums faintly in the technology becoming more common in larger cities.",
+      "The Calendar of Haptos marks the passage of days."
+    ]
+  }
+}
