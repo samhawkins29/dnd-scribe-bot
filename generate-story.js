@@ -13,6 +13,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const Anthropic = require('@anthropic-ai/sdk');
 const config = require('./config');
 const log = require('./logger');
@@ -58,6 +59,68 @@ function loadCampaignContext() {
     log.warn('Failed to parse campaign-context.json', { error: err.message });
     return null;
   }
+}
+
+function loadOneShotContext() {
+  const ctxPath = config.paths.oneshotContext;
+  if (!fs.existsSync(ctxPath)) {
+    log.warn('No oneshot-context.json found — one-shot will use campaign characters');
+    return null;
+  }
+  try {
+    return JSON.parse(fs.readFileSync(ctxPath, 'utf-8'));
+  } catch (err) {
+    log.warn('Failed to parse oneshot-context.json', { error: err.message });
+    return null;
+  }
+}
+
+/**
+ * Build a metadata comment header to prepend to generated story files.
+ */
+function buildMetadataHeader({ type, date, characters, chapter, title }) {
+  const lines = [
+    '<!-- Session Metadata',
+    `type: ${type}`,
+    `date: ${date}`,
+    `characters: ${characters.join(', ')}`,
+  ];
+  if (chapter !== undefined && chapter !== null) lines.push(`chapter: ${chapter}`);
+  if (title) lines.push(`title: "${title}"`);
+  lines.push('-->');
+  return lines.join('\n');
+}
+
+/**
+ * Append a session record to stories/sessions.json for persistence across restarts.
+ */
+function logSession(sessionData) {
+  const logPath = config.paths.sessionsLog;
+  let data = { sessions: [] };
+  if (fs.existsSync(logPath)) {
+    try {
+      data = JSON.parse(fs.readFileSync(logPath, 'utf-8'));
+      if (!Array.isArray(data.sessions)) data.sessions = [];
+    } catch (e) {
+      data = { sessions: [] };
+    }
+  }
+  data.sessions.push(sessionData);
+  try {
+    fs.mkdirSync(path.dirname(logPath), { recursive: true });
+    fs.writeFileSync(logPath, JSON.stringify(data, null, 2), 'utf-8');
+    log.info('Session logged', { id: sessionData.id, type: sessionData.type });
+  } catch (err) {
+    log.warn('Failed to write sessions.json', { error: err.message });
+  }
+}
+
+/**
+ * Extract the H1 title from a generated story's markdown content.
+ */
+function extractTitleFromStory(storyContent) {
+  const match = storyContent.match(/^#\s+(.+)$/m);
+  return match ? match[1].trim() : null;
 }
 
 function loadPreviousChapterSummaries() {
@@ -582,6 +645,8 @@ ${transcript}
 === INSTRUCTIONS ===
 Based on this D&D session transcript, write a complete narrative chapter.
 
+IMPORTANT: Cover the ENTIRE session from start to finish. Events at the END of the session are just as important as the beginning. Do not truncate or skip the final encounters, battles, or scenes. If the session ended with a fight or climactic moment, that MUST be included in the story.
+
 1. First, identify all player characters and NPCs present in the transcript.
 2. Structure the session as a cohesive chapter with:
    - A compelling chapter title (POV character's name for Martin style, or a thematic title for Sanderson style)
@@ -703,9 +768,10 @@ async function generateStory(transcriptPath, opts = {}) {
     storyContent = fullText.slice(0, summaryMatch.index).trim();
   }
 
-  // ─── Verification Loop (max 4 attempts, accept best) ─────────────
+  // ─── Verification Loop (configurable attempts/threshold) ─────────
   let verificationResult = null;
-  const MAX_VERIFICATION_ATTEMPTS = 4;
+  const MAX_VERIFICATION_ATTEMPTS = config.verification.campaignMaxAttempts;
+  const ACCURACY_THRESHOLD = config.verification.campaignThreshold;
   let bestStoryContent = storyContent;
   let bestSummary = summary;
   let bestScore = -1;
@@ -721,7 +787,7 @@ async function generateStory(transcriptPath, opts = {}) {
       bestSummary = summary;
     }
 
-    if (verificationResult.accuracy_score >= 70) {
+    if (verificationResult.accuracy_score >= ACCURACY_THRESHOLD) {
       log.info('Story passed verification', {
         attempt,
         accuracy_score: verificationResult.accuracy_score,
@@ -804,6 +870,7 @@ async function generateStory(transcriptPath, opts = {}) {
     const chapterNumForHistory = nextChapterNumber();
     history.push({
       date: new Date().toISOString(),
+      sessionType: 'campaign',
       chapter: chapterNumForHistory,
       accuracy_score: verificationResult.accuracy_score,
       fabrications_count: verificationResult.fabrications?.length || 0,
@@ -821,8 +888,19 @@ async function generateStory(transcriptPath, opts = {}) {
   const chapterFileName = `chapter-${String(chapterNum).padStart(2, '0')}-${dateStr}.md`;
   const storyPath = path.join(config.paths.stories, chapterFileName);
 
+  // Prepend metadata header
+  const campaignCharacterNames = (campaignCtx?.playerCharacters || []).map(pc => pc.name).filter(Boolean);
+  const storyTitle = extractTitleFromStory(storyContent);
+  const metadataHeader = buildMetadataHeader({
+    type: 'campaign',
+    date: dateStr,
+    characters: campaignCharacterNames,
+    chapter: chapterNum,
+    title: storyTitle,
+  });
+
   fs.mkdirSync(config.paths.stories, { recursive: true });
-  fs.writeFileSync(storyPath, storyContent, 'utf-8');
+  fs.writeFileSync(storyPath, metadataHeader + '\n\n' + storyContent, 'utf-8');
   log.info('Chapter saved', { path: storyPath, words: storyContent.split(/\s+/).length });
 
   // Append summary to campaign log
@@ -834,6 +912,16 @@ async function generateStory(transcriptPath, opts = {}) {
 
   // Update campaign context with any new information Claude mentioned
   await updateCampaignContext(storyContent, summary, campaignCtx);
+
+  // Log session to sessions.json
+  logSession({
+    id: crypto.randomUUID(),
+    type: 'campaign',
+    date: dateStr,
+    filename: chapterFileName,
+    chapter: chapterNum,
+    characters: campaignCharacterNames,
+  });
 
   return { storyPath, summary, chapterNum, verificationResult };
 }
@@ -867,11 +955,24 @@ async function generateOneShotStory(transcriptPath, opts = {}) {
   // Pre-process: classify each line as IN_GAME / META / OOC / NARRATION
   transcript = await classifyTranscriptLines(transcript);
 
+  // Load both contexts and merge: one-shot PCs + shared world lore from campaign
   const campaignCtx = loadCampaignContext();
+  const oneShotCtx = loadOneShotContext();
+
+  // Build merged context: one-shot playerCharacters override campaign playerCharacters,
+  // but all shared world lore (NPCs, locations, plot threads, flavor bank) comes from campaign
+  const mergedCtx = campaignCtx ? { ...campaignCtx } : {};
+  if (oneShotCtx?.playerCharacters?.length) {
+    mergedCtx.playerCharacters = oneShotCtx.playerCharacters;
+    log.info('One-shot: using oneshot-context.json player characters', {
+      characters: oneShotCtx.playerCharacters.map(pc => pc.name),
+    });
+  }
+
   const previousSummaries = loadPreviousChapterSummaries();
 
   const { systemPrompt, userMessage } = buildMessages(
-    transcript, style, campaignCtx, previousSummaries
+    transcript, style, mergedCtx, previousSummaries
   );
 
   log.info('Generating one-shot story with Claude', {
@@ -908,17 +1009,17 @@ async function generateOneShotStory(transcriptPath, opts = {}) {
     storyContent = fullText.slice(0, summaryMatch.index).trim();
   }
 
-  // ─── Verification Loop (max 6 attempts, threshold 80 for one-shot) ──
+  // ─── Verification Loop (configurable attempts/threshold) ─────────
   let verificationResult = null;
-  const MAX_VERIFICATION_ATTEMPTS = 6;
-  const ACCURACY_THRESHOLD = 80;
+  const MAX_VERIFICATION_ATTEMPTS = config.verification.oneShotMaxAttempts;
+  const ACCURACY_THRESHOLD = config.verification.oneShotThreshold;
   let bestStoryContent = storyContent;
   let bestSummary = summary;
   let bestScore = -1;
 
   for (let attempt = 1; attempt <= MAX_VERIFICATION_ATTEMPTS; attempt++) {
     log.info(`One-shot story verification attempt ${attempt}/${MAX_VERIFICATION_ATTEMPTS}`);
-    verificationResult = await verifyStory(transcript, storyContent, campaignCtx);
+    verificationResult = await verifyStory(transcript, storyContent, mergedCtx);
 
     // Track the best attempt so far
     if (verificationResult.accuracy_score > bestScore) {
@@ -993,18 +1094,65 @@ async function generateOneShotStory(transcriptPath, opts = {}) {
     }
   }
 
+  // ─── Save verification history (shared with campaign, tagged by sessionType) ──
+  if (verificationResult) {
+    const historyPath = path.join(config.paths.stories, 'verification-history.json');
+    let history = [];
+    if (fs.existsSync(historyPath)) {
+      try {
+        history = JSON.parse(fs.readFileSync(historyPath, 'utf-8'));
+      } catch (e) {
+        log.warn('Could not parse verification-history.json, starting fresh', { error: e.message });
+        history = [];
+      }
+    }
+    const oneShotDateStr = new Date().toISOString().slice(0, 10);
+    const oneShotFileNameForHistory = `oneshot-${oneShotDateStr}.md`;
+    history.push({
+      date: new Date().toISOString(),
+      sessionType: 'oneshot',
+      filename: oneShotFileNameForHistory,
+      accuracy_score: verificationResult.accuracy_score,
+      fabrications_count: verificationResult.fabrications?.length || 0,
+      omissions_count: verificationResult.omissions?.length || 0,
+      fabrications: verificationResult.fabrications || [],
+      omissions: verificationResult.omissions || [],
+    });
+    fs.writeFileSync(historyPath, JSON.stringify(history, null, 2), 'utf-8');
+    log.info('Verification history saved (one-shot)', { path: historyPath, entries: history.length });
+  }
+
   // Save the one-shot story with different naming convention
   const dateStr = new Date().toISOString().slice(0, 10);
   const oneShotFileName = `oneshot-${dateStr}.md`;
   const storyPath = path.join(config.paths.stories, oneShotFileName);
 
+  // Prepend metadata header
+  const oneShotCharacterNames = (mergedCtx?.playerCharacters || []).map(pc => pc.name).filter(Boolean);
+  const oneShotTitle = extractTitleFromStory(storyContent);
+  const metadataHeader = buildMetadataHeader({
+    type: 'oneshot',
+    date: dateStr,
+    characters: oneShotCharacterNames,
+    title: oneShotTitle,
+  });
+
   fs.mkdirSync(config.paths.stories, { recursive: true });
-  fs.writeFileSync(storyPath, storyContent, 'utf-8');
+  fs.writeFileSync(storyPath, metadataHeader + '\n\n' + storyContent, 'utf-8');
   log.info('One-shot story saved', { path: storyPath, words: storyContent.split(/\s+/).length });
 
   // NOTE: One-shot mode does NOT update campaign-log.md or increment the chapter counter
 
-  return { storyPath, summary, verificationResult };
+  // Log session to sessions.json
+  logSession({
+    id: crypto.randomUUID(),
+    type: 'oneshot',
+    date: dateStr,
+    filename: oneShotFileName,
+    characters: oneShotCharacterNames,
+  });
+
+  return { storyPath, summary, verificationResult, characters: oneShotCharacterNames };
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1064,6 +1212,7 @@ Return ONLY valid JSON (no markdown fences) in this exact format:
   "accuracy_score": 0-100
 }`;
 
+  let rawText = '';
   try {
     const response = await anthropic.messages.create({
       model: config.anthropic.model,
@@ -1074,26 +1223,60 @@ Return ONLY valid JSON (no markdown fences) in this exact format:
       }],
     });
 
-    const rawText = response.content
+    rawText = response.content
       .filter(b => b.type === 'text')
       .map(b => b.text)
       .join('');
-
-    // Extract JSON from possible markdown code block
-    const jsonMatch = rawText.match(/```json?\s*([\s\S]*?)```/) || [null, rawText];
-    const result = JSON.parse(jsonMatch[1].trim());
-
-    log.info('Story verification result', {
-      accuracy_score: result.accuracy_score,
-      fabrications_count: result.fabrications?.length || 0,
-      omissions_count: result.omissions?.length || 0,
-    });
-
-    return result;
   } catch (err) {
-    log.warn('Story verification failed (non-fatal)', { error: err.message });
-    // If verification fails, return a passing score to avoid blocking the pipeline
-    return { fabrications: [], omissions: [], accuracy_score: 100 };
+    log.warn('Verifier API call failed (non-fatal)', { error: err.message });
+    return { fabrications: [], omissions: [], accuracy_score: 0 };
+  }
+
+  // Normalize an unknown score value into a clamped integer in [0, 100].
+  // Anything non-finite or out-of-range fails closed (returns 0).
+  const normalizeScore = (val) => {
+    const n = typeof val === 'number' ? val : Number(val);
+    if (!Number.isFinite(n)) return 0;
+    return Math.max(0, Math.min(100, Math.floor(n)));
+  };
+
+  // Extract JSON from possible markdown code block (handles ```json, ```JSON, and bare ```).
+  const fenceMatch = rawText.match(/```(?:json|JSON)?\s*([\s\S]*?)```/);
+  const jsonCandidate = fenceMatch ? fenceMatch[1].trim() : rawText.trim();
+
+  try {
+    const result = JSON.parse(jsonCandidate);
+    const normalized = {
+      accuracy_score: normalizeScore(result.accuracy_score),
+      fabrications: Array.isArray(result.fabrications) ? result.fabrications : [],
+      omissions: Array.isArray(result.omissions) ? result.omissions : [],
+    };
+    log.info('Story verification result', {
+      accuracy_score: normalized.accuracy_score,
+      fabrications_count: normalized.fabrications.length,
+      omissions_count: normalized.omissions.length,
+      score_coerced: normalized.accuracy_score !== result.accuracy_score,
+    });
+    return normalized;
+  } catch (parseErr) {
+    // JSON parse failed. Only accept a fallback score if it appears in JSON-style
+    // quoted-key form ("accuracy_score": N) — NOT prose like "accuracy_score is 0-100".
+    // This prevents the model echoing the rubric or a prompt fragment from passing.
+    const scoreMatch = rawText.match(/"accuracy_score"\s*:\s*(\d{1,3})\b/);
+    if (scoreMatch) {
+      const score = normalizeScore(parseInt(scoreMatch[1], 10));
+      log.warn('Verifier JSON parse failed; recovered accuracy_score via regex', {
+        error: parseErr.message,
+        accuracy_score: score,
+        raw_preview: rawText.slice(0, 400),
+      });
+      return { fabrications: [], omissions: [], accuracy_score: score };
+    }
+    log.warn('Verifier JSON parse failed and regex fallback found no score — failing closed with score=0', {
+      error: parseErr.message,
+      raw_preview: rawText.slice(0, 400),
+    });
+    return { fabrications: [], omissions: [], accuracy_score: 0 };
   }
 }
 
@@ -1167,16 +1350,69 @@ async function main() {
   const style = styleIdx !== -1 ? args[styleIdx + 1] : undefined;
 
   try {
-    const { storyPath, summary, chapterNum } = await generateStory(transcriptPath, { style });
+    const { storyPath, summary, chapterNum, verificationResult } = await generateStory(transcriptPath, { style });
     console.log(`\nChapter ${chapterNum} generated!`);
     console.log(`Saved to: ${storyPath}`);
     if (summary) {
       console.log(`\nSummary: ${summary}`);
     }
+
+    // ── Opt-in: post the finished story to the Discord recap channel ──
+    // Off by default so iterating on a draft (regenerate-until-good) doesn't
+    // spam the channel. Pass --post once you're happy with the result.
+    if (args.includes('--post')) {
+      await postStoryToDiscord(storyPath, chapterNum, style || 'martin', verificationResult);
+    }
   } catch (err) {
     log.error('Story generation failed', { error: err.message });
     console.error(`\nError: ${err.message}`);
     process.exit(1);
+  }
+}
+
+/**
+ * Stand up a short-lived Discord client, post the story to the recap channel,
+ * then tear the client down. Mirrors the bot pipeline's postRecapToDiscord so
+ * a CLI-generated story looks identical to a bot-generated one.
+ *
+ * Requires DISCORD_BOT_TOKEN and DISCORD_GUILD_ID to be set.
+ */
+async function postStoryToDiscord(storyPath, chapterNum, style, verificationResult) {
+  const { Client, GatewayIntentBits } = require('discord.js');
+  const config = require('./config');
+  // Lazy require — pipeline.js requires this module, so importing it at the
+  // top would create a circular dependency.
+  const { postRecapToDiscord } = require('./modules/pipeline');
+
+  const token = config.discord.token;
+  const guildId = config.discord.guildId;
+  if (!token || token.includes('YOUR_')) {
+    throw new Error('Cannot post to Discord: DISCORD_BOT_TOKEN is not configured.');
+  }
+  if (!guildId) {
+    throw new Error('Cannot post to Discord: set DISCORD_GUILD_ID so the recap channel can be resolved.');
+  }
+
+  const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+  try {
+    await client.login(token);
+    await new Promise((resolve, reject) => {
+      client.once('ready', resolve);
+      client.once('error', reject);
+    });
+
+    const guild = await client.guilds.fetch(guildId);
+    // Populate the channel cache so findRecapChannel (inside postRecapToDiscord)
+    // can locate the recap channel by name.
+    await guild.channels.fetch();
+    const anyTextChannel = guild.channels.cache.find(ch => ch.isTextBased && ch.isTextBased());
+    if (!anyTextChannel) throw new Error(`No text channel found in guild ${guildId}`);
+
+    console.log('\nPosting story to Discord...');
+    await postRecapToDiscord(anyTextChannel, storyPath, chapterNum, style, 0, verificationResult);
+    console.log('Posted to the recap channel.');
+  } finally {
+    client.destroy();
   }
 }
 

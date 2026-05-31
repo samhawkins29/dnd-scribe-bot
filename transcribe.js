@@ -235,6 +235,43 @@ function matchSpeakersToUsers(utterances, sessionData) {
 
   const sessionStart = sessionData.sessionStart;
 
+  // ── Timeline warp ────────────────────────────────────────────────
+  // The transcript's millisecond timestamps are positions in the *mixed
+  // audio file*, while the speaker segments are absolute wall-clock times.
+  // Those two clocks should be identical, but the recorder caps each
+  // inserted silence gap (see SilencePadTransform.MAX_SILENCE_MS), so a
+  // session with long pauses produces an audio file noticeably SHORTER
+  // than the real elapsed time. A naive `sessionStart + utt.start` then
+  // places every late-session utterance too early; they pile onto whoever
+  // talks most overall (the DM) and the whole diarization collapses onto
+  // one user.
+  //
+  // We can't recover where each cap happened from the finished file, but
+  // we DO know both endpoints: the audio runs 0 → maxUttEnd, and the real
+  // speech runs 0 → (lastSegmentEnd - sessionStart). Stretching audio
+  // positions across the full wall-clock span removes the systematic
+  // end-of-session compression (anchored at 0, so the well-aligned start
+  // is untouched). It's a best-effort linear correction, not exact, but it
+  // restores enough alignment for the per-label vote below to separate
+  // speakers.
+  let maxUttEnd = 0;
+  for (const u of utterances) if (u.end > maxUttEnd) maxUttEnd = u.end;
+  let maxSegEnd = 0;
+  for (const seg of sessionData.segments) if (seg.endTime > maxSegEnd) maxSegEnd = seg.endTime;
+  const wallSpan = maxSegEnd - sessionStart;
+
+  let warp = 1;
+  if (maxUttEnd > 0 && wallSpan > 0) {
+    warp = wallSpan / maxUttEnd;
+    // Clamp to a sane range so corrupt data can't produce garbage offsets.
+    warp = Math.max(0.5, Math.min(2.0, warp));
+  }
+  log.info('Speaker-match timeline warp', {
+    audioSpanSec: Math.round(maxUttEnd / 1000),
+    wallSpanSec: Math.round(wallSpan / 1000),
+    warpRatio: Number(warp.toFixed(4)),
+  });
+
   // Group utterances by speaker label
   const speakerUtterances = {};
   for (const u of utterances) {
@@ -249,9 +286,10 @@ function matchSpeakersToUsers(utterances, sessionData) {
     const userOverlap = {};
 
     for (const utt of utts) {
-      // Convert transcript timestamps (ms from start of audio) to absolute wall-clock ms
-      const uttStart = sessionStart + utt.start;
-      const uttEnd = sessionStart + utt.end;
+      // Convert transcript timestamps (ms from start of audio) to absolute
+      // wall-clock ms, applying the timeline warp described above.
+      const uttStart = sessionStart + utt.start * warp;
+      const uttEnd = sessionStart + utt.end * warp;
 
       for (const seg of sessionData.segments) {
         const overlapStart = Math.max(uttStart, seg.startTime);
@@ -272,6 +310,17 @@ function matchSpeakersToUsers(utterances, sessionData) {
         bestUser = userId;
       }
     }
+
+    // Diagnostic: show the top candidates so a collapse is visible in logs.
+    const ranked = Object.entries(userOverlap)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([uid, ms]) => `${(sessionData.users && sessionData.users[uid]) || uid}=${Math.round(ms / 1000)}s`);
+    log.info('Speaker label candidates', {
+      label: speakerLabel,
+      utterances: utts.length,
+      top: ranked,
+    });
 
     if (bestUser) {
       speakerToUser[speakerLabel] = bestUser;
@@ -634,11 +683,36 @@ async function transcribeAssemblyAIOnce(audioPath, opts = {}) {
     const timed = utterances.map(u => ({
       speaker: u.speaker, start: u.start, end: u.end, text: u.text,
     }));
+    // Cache the raw diarized utterances next to the audio. Re-running the
+    // (free, local) speaker→user mapping then never requires paying for a
+    // second transcription — see remapFromCache().
+    saveRawUtteranceCache(audioPath, timed, result.audio_duration);
     return { text, utterances: timed };
   }
 
   // Fallback to words if no utterances
   return { text: result.text || '(empty transcript)', utterances: [] };
+}
+
+/**
+ * Build the sidecar path for a recording's cached raw diarized utterances.
+ * Strips a trailing "-clean" (the ffmpeg-preprocessed copy) so the cache is
+ * keyed to the original session, not the temporary cleaned file.
+ */
+function rawCachePath(audioPath) {
+  const dir = path.dirname(audioPath);
+  const base = path.basename(audioPath).replace(/\.[^.]+$/, '').replace(/-clean$/, '');
+  return path.join(dir, `${base}-assemblyai-raw.json`);
+}
+
+function saveRawUtteranceCache(audioPath, utterances, audioDuration) {
+  try {
+    const out = rawCachePath(audioPath);
+    fs.writeFileSync(out, JSON.stringify({ audioDuration, utterances }, null, 2), 'utf-8');
+    log.info('Cached raw diarized utterances', { path: out, count: utterances.length });
+  } catch (err) {
+    log.warn('Could not cache raw utterances', { error: err.message });
+  }
 }
 
 /**
@@ -911,8 +985,69 @@ function insertSceneBreaks(transcriptText, gapThresholdSec = 30) {
 
 // ─── CLI entry point ────────────────────────────────────────────────
 
+/**
+ * Re-run the (free, local) speaker→user mapping from a cached raw-utterance
+ * file produced by an earlier AssemblyAI run — no re-transcription needed.
+ * Used both by the `--remap` CLI subcommand and for offline matcher tuning.
+ *
+ * @param {string} cachePath  Path to a *-assemblyai-raw.json cache file
+ * @returns {{ outFile: string, speakerToUser: Object, unmappedUsers: Array }}
+ */
+function remapFromCache(cachePath) {
+  const raw = JSON.parse(fs.readFileSync(cachePath, 'utf-8'));
+  const utterances = raw.utterances || [];
+  if (utterances.length === 0) throw new Error(`No utterances in cache: ${cachePath}`);
+
+  const text = utterances
+    .map(u => `[${formatTime(u.start)}] Speaker ${u.speaker}: ${u.text}`)
+    .join('\n');
+
+  const speakerMap = loadSpeakerMap();
+  const sessionData = loadSessionSpeakers();
+  if (!sessionData) throw new Error('No speakers.json found to map against');
+
+  const speakerToUser = matchSpeakersToUsers(utterances, sessionData);
+  log.info('Speaker-to-user mapping result (remap)', { mappings: speakerToUser });
+
+  const { transcript, unmappedUsers } = applySpeakerLabels(text, speakerToUser, speakerMap, sessionData);
+
+  const outFile = outputPath();
+  fs.mkdirSync(path.dirname(outFile), { recursive: true });
+  fs.writeFileSync(outFile, transcript, 'utf-8');
+  log.info('Transcript saved (remap)', { path: outFile, lines: transcript.split('\n').length });
+
+  return { outFile, speakerToUser, unmappedUsers };
+}
+
 async function main() {
   const args = process.argv.slice(2);
+
+  // ── Offline re-map: rebuild speaker labels from a cached transcription ──
+  const remapIdx = args.indexOf('--remap');
+  if (remapIdx !== -1) {
+    let cachePath = args[remapIdx + 1];
+    if (!cachePath || cachePath.startsWith('--')) {
+      // Default to the newest cache in the recordings dir.
+      const dir = config.paths.recordings;
+      const caches = fs.readdirSync(dir)
+        .filter(f => f.endsWith('-assemblyai-raw.json'))
+        .map(f => ({ name: f, time: fs.statSync(path.join(dir, f)).mtimeMs }))
+        .sort((a, b) => b.time - a.time);
+      if (caches.length === 0) { console.error('No *-assemblyai-raw.json cache found'); process.exit(1); }
+      cachePath = path.join(dir, caches[0].name);
+    }
+    try {
+      const { outFile, speakerToUser } = remapFromCache(cachePath);
+      console.log(`\nRe-mapped from ${cachePath}`);
+      console.log('Mapping:', JSON.stringify(speakerToUser, null, 2));
+      console.log(`Transcript saved to: ${outFile}`);
+    } catch (err) {
+      log.error('Remap failed', { error: err.message });
+      console.error(`\nError: ${err.message}`);
+      process.exit(1);
+    }
+    return;
+  }
 
   let audioPath;
   if (args.includes('--latest')) {
@@ -945,4 +1080,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { transcribe, findLatestRecording, insertSceneBreaks, buildCustomVocabulary, preprocessAudio };
+module.exports = { transcribe, findLatestRecording, insertSceneBreaks, buildCustomVocabulary, preprocessAudio, matchSpeakersToUsers, applySpeakerLabels, remapFromCache };

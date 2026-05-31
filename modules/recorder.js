@@ -17,6 +17,12 @@ const path = require('path');
 const config = require('../config');
 const log = require('../logger');
 const { makeEmbed, postCommandDictionary, formatDuration } = require('./discord-utils');
+const {
+  safePath,
+  sessionTimestamp,
+  backupRecording,
+  ensureDir,
+} = require('./recovery');
 
 // ─── State per guild ────────────────────────────────────────────────
 /** @type {Map<string, RecordingSession>} */
@@ -31,8 +37,14 @@ class RecordingSession {
     this.pcmFiles = [];                // temp per-user PCM paths
     this.startTime = null;
     this.outputPath = '';
+    this.backupPath = '';              // path of the safety backup, or '' if not yet copied
     this.active = false;
     this.mode = mode;                  // 'standard' or 'oneshot'
+    // Unique timestamp shared by every artifact this session produces
+    // (audio file, speakers file, backup).  Generated up front so all
+    // names line up.  Includes seconds → two recordings on the same day
+    // will never collide.
+    this.timestampStr = sessionTimestamp();
     // ── Speaker tracking ──────────────────────────────────────────
     this.speakingSegments = [];        // Array<{ userId, startTime, endTime }>
     this.currentlySpeaking = new Map(); // Map<userId, startTime> for users currently speaking
@@ -64,8 +76,28 @@ class SilencePadTransform extends Transform {
     this.firstChunk = true;
     // Only pad gaps longer than this (avoids micro-jitter between frames)
     this.SILENCE_THRESHOLD_MS = 200;
-    // Cap a single silence insert at 60 seconds to avoid runaway allocation
-    this.MAX_SILENCE_MS = 60_000;
+    // Cap a single silence insert as a sanity bound against a pathological
+    // gap (e.g. the bot left idle in a channel for hours). This MUST be large
+    // enough to cover any real pause in a session — a previous 60-second cap
+    // truncated every long lull, so a 3.5-hour session's audio came out ~10
+    // minutes short of wall-clock. That compression then broke speaker→user
+    // matching (every diarized label collapsed onto the DM). 30 minutes
+    // comfortably covers real pauses while still bounding the worst case.
+    this.MAX_SILENCE_MS = 30 * 60_000;
+    // Write silence in bounded chunks so a long gap can't trigger one giant
+    // Buffer.alloc (a 30-min gap is ~345 MB of PCM).
+    this.SILENCE_CHUNK_MS = 5_000;
+  }
+
+  /** Push `padMs` of zero-filled (silent) PCM, in bounded chunks. */
+  _pushSilence(padMs) {
+    let remaining = Math.min(padMs, this.MAX_SILENCE_MS);
+    while (remaining > 0) {
+      const sliceMs = Math.min(remaining, this.SILENCE_CHUNK_MS);
+      const bytes = Math.floor(sliceMs * this.bytesPerMs);
+      if (bytes > 0) this.push(Buffer.alloc(bytes, 0));
+      remaining -= sliceMs;
+    }
   }
 
   _transform(chunk, _encoding, callback) {
@@ -76,21 +108,13 @@ class SilencePadTransform extends Transform {
       this.firstChunk = false;
       const offsetMs = now - this.sessionStartTime;
       if (offsetMs > this.SILENCE_THRESHOLD_MS) {
-        const padMs = Math.min(offsetMs, this.MAX_SILENCE_MS);
-        const silenceBytes = Math.floor(padMs * this.bytesPerMs);
-        if (silenceBytes > 0) {
-          this.push(Buffer.alloc(silenceBytes, 0));
-        }
+        this._pushSilence(offsetMs);
       }
     } else if (this.lastChunkTime !== null) {
       const gapMs = now - this.lastChunkTime;
       if (gapMs > this.SILENCE_THRESHOLD_MS) {
         // Subtract one Opus frame (~20 ms) to avoid double-counting
-        const padMs = Math.min(gapMs - 20, this.MAX_SILENCE_MS);
-        const silenceBytes = Math.floor(padMs * this.bytesPerMs);
-        if (silenceBytes > 0) {
-          this.push(Buffer.alloc(silenceBytes, 0));
-        }
+        this._pushSilence(gapMs - 20);
       }
     }
 
@@ -101,11 +125,6 @@ class SilencePadTransform extends Transform {
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────
-
-function sessionDateString() {
-  const d = new Date();
-  return d.toISOString().slice(0, 10);
-}
 
 /**
  * Find the most recent speakers.json file in the recordings directory.
@@ -121,9 +140,15 @@ function findLatestSpeakersFile() {
   } catch { return null; }
 }
 
-function sessionFileName() {
+/**
+ * Build the on-disk filename for a session's mixed audio.  Includes a
+ * full HHMMSS timestamp so a second recording on the same day cannot
+ * collide with the first.  The caller MUST still feed the result through
+ * safePath() before writing — see mixAndEncode().
+ */
+function sessionFileName(session) {
   const ext = config.audio.format === 'pcm' ? 'pcm' : 'ogg';
-  return `session-${sessionDateString()}.${ext}`;
+  return `session-${session.timestampStr}.${ext}`;
 }
 
 /**
@@ -183,7 +208,20 @@ function subscribeUser(session, receiver, userId) {
  */
 async function mixAndEncode(session) {
   return new Promise((resolve, reject) => {
-    const outPath = path.join(config.paths.recordings, sessionFileName());
+    ensureDir(config.paths.recordings);
+
+    // Build the desired path, then run it through safePath so we
+    // NEVER overwrite an existing file in recordings/.  If somehow
+    // a file with the exact timestamped name already exists, the
+    // collision check appends `-2`, `-3`, … before the extension.
+    const desiredPath = path.join(config.paths.recordings, sessionFileName(session));
+    const outPath = safePath(desiredPath);
+    if (outPath !== desiredPath) {
+      log.warn('Recording filename collision avoided', {
+        desired: desiredPath,
+        chosen: outPath,
+      });
+    }
     session.outputPath = outPath;
 
     const validFiles = session.pcmFiles.filter(f => {
@@ -216,7 +254,9 @@ async function mixAndEncode(session) {
       args.push('-c:a', 'libopus', '-b:a', '96k', outPath);
     }
 
-    args.push('-y'); // overwrite
+    // Intentionally NOT passing -y.  safePath() guarantees a free name,
+    // so ffmpeg writing here must never clobber an existing recording.
+    args.push('-n');
 
     log.info('Mixing audio with ffmpeg', { inputs: validFiles.length, output: outPath });
     const ff = spawn(config.audio.ffmpegPath, args);
@@ -446,10 +486,13 @@ async function stopRecording(guildId) {
   session.currentlySpeaking.clear();
 
   // ── Save speaker segments and display name map ─────────────────
-  const speakersFile = path.join(
+  // Use the session's HHMMSS-precision timestamp and run through
+  // safePath so two recordings on the same day cannot overwrite
+  // each other's speaker files either.
+  const speakersFile = safePath(path.join(
     config.paths.recordings,
-    `session-${sessionDateString()}-speakers.json`
-  );
+    `session-${session.timestampStr}-speakers.json`,
+  ));
   const speakerData = {
     sessionStart: session.startTime,
     segments: session.speakingSegments,
@@ -471,14 +514,33 @@ async function stopRecording(guildId) {
   try {
     const outPath = await mixAndEncode(session);
     const fileSize = (fs.statSync(outPath).size / 1024 / 1024).toFixed(1);
+
+    // ── Immediate backup ──────────────────────────────────────────
+    // Copy the freshly-mixed recording into backups/ BEFORE we hand
+    // control to the pipeline.  Even if downstream processing crashes
+    // hard, the raw audio is now in two places.
+    const backupPath = backupRecording(outPath);
+    session.backupPath = backupPath || '';
+
     sessions.delete(guildId);
-    log.info('Recording stopped', { guildId, duration, outPath });
+    log.info('Recording stopped', {
+      guildId,
+      duration,
+      outPath,
+      backupPath: session.backupPath,
+      fileSizeMb: fileSize,
+    });
+
+    const backupNote = backupPath
+      ? `\nBackup: \`${path.basename(backupPath)}\``
+      : '\n(Backup copy failed — check logs.)';
 
     return {
       success: true,
       audioPath: outPath,
+      backupPath: session.backupPath,
       mode: session.mode,
-      message: `Recording saved! **${minutes}m ${seconds}s** captured. Processing...`,
+      message: `Recording saved! **${minutes}m ${seconds}s** captured (${fileSize} MB).${backupNote}\n\nProcessing...`,
     };
   } catch (err) {
     sessions.delete(guildId);
