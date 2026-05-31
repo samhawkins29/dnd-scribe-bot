@@ -23,68 +23,70 @@ const log = require('./logger');
 // ─── Custom Vocabulary for AssemblyAI ─────────────────────────────
 
 /**
- * Build a flat array of custom vocabulary terms from campaign-context.json
- * for use as AssemblyAI's `word_boost` parameter. Extracts character names,
- * NPC names, location names, item names, and setting-specific terms.
- *
- * @returns {string[]} Array of unique vocabulary terms to boost
+ * Common D&D terms that AssemblyAI tends to misrecognize. Boosting these
+ * improves accuracy of game-mechanic vocabulary that appears in nearly
+ * every session, regardless of the campaign.
  */
-function buildCustomVocabulary() {
-  const ctxPath = config.paths.campaignContext;
-  if (!fs.existsSync(ctxPath)) {
-    log.info('No campaign-context.json found — skipping custom vocabulary');
-    return [];
-  }
+const DND_COMMON_TERMS = [
+  'initiative', 'Eldritch Blast', 'Fireball', 'cantrip', 'melee', 'ranged',
+  'hit points', 'armor class', 'saving throw',
+  'perception', 'stealth', 'persuasion', 'intimidation', 'athletics',
+  'arcana', 'religion', 'nature', 'insight', 'investigation', 'medicine',
+  'survival', 'deception', 'performance', 'sleight of hand',
+  'animal handling', 'acrobatics', 'history',
+];
 
-  let ctx;
+/**
+ * Read and parse a context JSON file from disk. Returns null on missing
+ * file or parse failure (logged at warn level).
+ */
+function readContextFile(ctxPath) {
+  if (!ctxPath || !fs.existsSync(ctxPath)) return null;
   try {
-    ctx = JSON.parse(fs.readFileSync(ctxPath, 'utf-8'));
+    return JSON.parse(fs.readFileSync(ctxPath, 'utf-8'));
   } catch (err) {
-    log.warn('Failed to parse campaign-context.json for vocabulary', { error: err.message });
-    return [];
+    log.warn('Failed to parse context file for vocabulary', {
+      path: ctxPath,
+      error: err.message,
+    });
+    return null;
   }
+}
 
-  const terms = new Set();
+/**
+ * Pull boostable terms (character names, NPCs, locations, items, etc.)
+ * from a single parsed context object into the supplied Set.
+ */
+function addContextTerms(ctx, terms) {
+  if (!ctx) return;
 
-  // Campaign name and setting terms
   if (ctx.campaignName) terms.add(ctx.campaignName);
 
-  // Player character names
   if (Array.isArray(ctx.playerCharacters)) {
     for (const pc of ctx.playerCharacters) {
-      if (pc.name) terms.add(pc.name);
+      if (pc && pc.name) terms.add(pc.name);
     }
   }
-
-  // Inactive character names
   if (Array.isArray(ctx.inactiveCharacters)) {
     for (const ic of ctx.inactiveCharacters) {
-      if (ic.name) terms.add(ic.name);
+      if (ic && ic.name) terms.add(ic.name);
     }
   }
-
-  // Recurring NPC names
   if (Array.isArray(ctx.recurringNPCs)) {
     for (const npc of ctx.recurringNPCs) {
-      if (npc.name) terms.add(npc.name);
+      if (npc && npc.name) terms.add(npc.name);
     }
   }
-
-  // Location names
   if (Array.isArray(ctx.locationsVisited)) {
     for (const loc of ctx.locationsVisited) {
       if (loc) terms.add(loc);
     }
   }
-
-  // Item names
   if (Array.isArray(ctx.itemsOfSignificance)) {
     for (const item of ctx.itemsOfSignificance) {
       if (item) terms.add(item);
     }
   }
-
-  // Flavor bank character and location names
   if (ctx.flavorBank) {
     if (ctx.flavorBank.locations) {
       for (const locName of Object.keys(ctx.flavorBank.locations)) {
@@ -97,9 +99,37 @@ function buildCustomVocabulary() {
       }
     }
   }
+}
+
+/**
+ * Build a flat array of custom vocabulary terms for AssemblyAI's
+ * `word_boost` parameter.
+ *
+ * Pulls character names, NPCs, locations, items, and flavor-bank names
+ * from BOTH campaign-context.json and oneshot-context.json (whichever
+ * exists), then appends the standard D&D mechanical-term list.
+ *
+ * Loaded fresh on every transcription so newly-detected characters
+ * are picked up automatically.
+ *
+ * @returns {string[]} Array of unique vocabulary terms to boost.
+ */
+function buildCustomVocabulary() {
+  const terms = new Set();
+
+  const campaignCtx = readContextFile(config.paths.campaignContext);
+  const oneshotCtx = readContextFile(config.paths.oneshotContext);
+  addContextTerms(campaignCtx, terms);
+  addContextTerms(oneshotCtx, terms);
+
+  for (const t of DND_COMMON_TERMS) terms.add(t);
 
   const vocabulary = Array.from(terms).filter(t => t && t.trim().length > 0);
-  log.info('Built custom vocabulary for transcription', { termCount: vocabulary.length });
+  log.info('Built custom vocabulary for transcription', {
+    termCount: vocabulary.length,
+    fromCampaign: !!campaignCtx,
+    fromOneshot: !!oneshotCtx,
+  });
   return vocabulary;
 }
 
@@ -484,15 +514,28 @@ async function transcribeWhisperLocal(audioPath) {
     return `[${time}] Speaker: ${seg.text.trim()}`;
   });
 
-  return lines.join('\n');
+  // No diarization → no per-speaker labels to match against.
+  return { text: lines.join('\n'), utterances: [] };
 }
 
 // ═══════════════════════════════════════════════════════════════════
 //  BACKEND 2 — AssemblyAI (cloud, speaker diarization)
 // ═══════════════════════════════════════════════════════════════════
 
-async function transcribeAssemblyAI(audioPath) {
-  log.info('Transcribing with AssemblyAI', { audioPath });
+/**
+ * Inner AssemblyAI call.  Caller controls knobs that we may flip on
+ * retry — currently `useKeyterms` and `speechModel`.
+ *
+ * @param {string} audioPath
+ * @param {object} [opts]
+ * @param {boolean} [opts.useKeyterms=true]  Send custom vocabulary
+ * @param {string}  [opts.speechModel='universal-3-pro']  AssemblyAI speech_models entry
+ */
+async function transcribeAssemblyAIOnce(audioPath, opts = {}) {
+  const useKeyterms = opts.useKeyterms !== false;
+  const speechModel = opts.speechModel || 'universal-3-pro';
+
+  log.info('Transcribing with AssemblyAI', { audioPath, useKeyterms, speechModel });
 
   const apiKey = config.transcription.assemblyai.apiKey;
   if (!apiKey || apiKey.includes('YOUR_')) {
@@ -526,21 +569,24 @@ async function transcribeAssemblyAI(audioPath) {
 
   // Step 2: Start transcription with speaker labels
   log.info('Starting transcription job...');
+  const requestBody = {
+    audio_url: uploadUrl,
+    speaker_labels: true,
+    language_code: 'en',
+    speakers_expected: 5,
+    speech_models: [speechModel],
+  };
+  if (useKeyterms) {
+    requestBody.keyterms_prompt = buildCustomVocabulary();
+  }
+
   const transcriptRes = await fetch(`${baseUrl}/transcript`, {
     method: 'POST',
     headers: {
       authorization: apiKey,
       'content-type': 'application/json',
     },
-    body: JSON.stringify({
-      audio_url: uploadUrl,
-      speaker_labels: true,
-      language_code: 'en',
-      speakers_expected: 5,
-      speech_models: ['universal-3-pro'],
-      word_boost: buildCustomVocabulary(),
-      boost_param: 'high',
-    }),
+    body: JSON.stringify(requestBody),
   });
 
   if (!transcriptRes.ok) {
@@ -580,14 +626,53 @@ async function transcribeAssemblyAI(audioPath) {
   // Step 4: Format with speaker labels
   const utterances = result.utterances || [];
   if (utterances.length > 0) {
-    return utterances.map(u => {
+    const text = utterances.map(u => {
       const time = formatTime(u.start);
       return `[${time}] Speaker ${u.speaker}: ${u.text}`;
     }).join('\n');
+    // Preserve real millisecond start/end timings for speaker→user matching.
+    const timed = utterances.map(u => ({
+      speaker: u.speaker, start: u.start, end: u.end, text: u.text,
+    }));
+    return { text, utterances: timed };
   }
 
   // Fallback to words if no utterances
-  return result.text || '(empty transcript)';
+  return { text: result.text || '(empty transcript)', utterances: [] };
+}
+
+/**
+ * AssemblyAI with up to three attempts — each with different
+ * fallback knobs.  We never give up before exhausting them; the
+ * recording stays on disk regardless.
+ *
+ *   Attempt 1: full quality (universal-3-pro + keyterms_prompt)
+ *   Attempt 2: drop keyterms_prompt (some accounts/regions reject it)
+ *   Attempt 3: switch to a different speech model (universal)
+ */
+async function transcribeAssemblyAI(audioPath) {
+  const attempts = [
+    { useKeyterms: true,  speechModel: 'universal-3-pro', label: 'full' },
+    { useKeyterms: false, speechModel: 'universal-3-pro', label: 'no-keyterms' },
+    { useKeyterms: false, speechModel: 'universal',       label: 'fallback-model' },
+  ];
+
+  let lastErr = null;
+  for (let i = 0; i < attempts.length; i++) {
+    const attempt = attempts[i];
+    try {
+      log.info('AssemblyAI attempt', { attempt: i + 1, of: attempts.length, ...attempt });
+      return await transcribeAssemblyAIOnce(audioPath, attempt);
+    } catch (err) {
+      lastErr = err;
+      log.warn(`AssemblyAI attempt ${i + 1}/${attempts.length} failed`, {
+        attempt: attempt.label,
+        error: err.message,
+      });
+    }
+  }
+
+  throw new Error(`AssemblyAI failed after ${attempts.length} attempts: ${lastErr?.message || 'unknown error'}`);
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -645,27 +730,42 @@ async function transcribeDeepgram(audioPath) {
   // Use utterances for speaker-labelled output
   const utterances = data.results?.utterances || [];
   if (utterances.length > 0) {
-    return utterances.map(u => {
+    const text = utterances.map(u => {
       const time = formatTime(u.start * 1000);
       return `[${time}] Speaker ${u.speaker}: ${u.transcript}`;
     }).join('\n');
+    // Deepgram reports timings in seconds — normalise to ms for matching.
+    const timed = utterances.map(u => ({
+      speaker: String(u.speaker), start: u.start * 1000, end: u.end * 1000, text: u.transcript,
+    }));
+    return { text, utterances: timed };
   }
 
   // Fallback: paragraphs from the first channel/alternative
   const paragraphs = data.results?.channels?.[0]?.alternatives?.[0]?.paragraphs?.paragraphs || [];
   if (paragraphs.length > 0) {
     const lines = [];
+    const timed = [];
     for (const para of paragraphs) {
       for (const sentence of para.sentences) {
         const time = formatTime(sentence.start * 1000);
         lines.push(`[${time}] Speaker ${para.speaker}: ${sentence.text}`);
+        timed.push({
+          speaker: String(para.speaker),
+          start: sentence.start * 1000,
+          end: sentence.end * 1000,
+          text: sentence.text,
+        });
       }
     }
-    return lines.join('\n');
+    return { text: lines.join('\n'), utterances: timed };
   }
 
   // Last resort: plain transcript
-  return data.results?.channels?.[0]?.alternatives?.[0]?.transcript || '(empty transcript)';
+  return {
+    text: data.results?.channels?.[0]?.alternatives?.[0]?.transcript || '(empty transcript)',
+    utterances: [],
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -696,41 +796,53 @@ async function transcribe(audioPath, opts = {}) {
     log.info('Using preprocessed audio', { original: resolvedPath, processed: processedPath });
   }
 
-  let transcript;
+  let result;
   switch (service) {
     case 'whisper-local':
-      transcript = await transcribeWhisperLocal(processedPath);
+      result = await transcribeWhisperLocal(processedPath);
       break;
     case 'assemblyai':
-      transcript = await transcribeAssemblyAI(processedPath);
+      result = await transcribeAssemblyAI(processedPath);
       break;
     case 'deepgram':
-      transcript = await transcribeDeepgram(processedPath);
+      result = await transcribeDeepgram(processedPath);
       break;
     default:
       throw new Error(`Unknown transcription service: ${service}`);
   }
+
+  let transcript = result.text;
+  const timedUtterances = result.utterances || [];
 
   // ── Speaker mapping: replace generic labels with character names ──
   const speakerMap = loadSpeakerMap();
   const sessionData = loadSessionSpeakers();
 
   if (sessionData && transcript.includes('Speaker ')) {
-    // Parse utterances from transcript for timestamp matching
-    const utteranceLines = transcript.split('\n').filter(l => l.trim());
-    const parsedUtterances = [];
-    for (const line of utteranceLines) {
-      const match = line.match(/^\[(\d{2}):(\d{2}):(\d{2})\]\s+Speaker\s+(\w+):\s*/);
-      if (match) {
-        const ms = (parseInt(match[1]) * 3600 + parseInt(match[2]) * 60 + parseInt(match[3])) * 1000;
-        // Estimate end as start + 10s or next utterance start (rough)
-        parsedUtterances.push({ speaker: match[4], start: ms, end: ms + 10000 });
-      }
-    }
+    // Prefer the backend's real millisecond utterance timings. The older
+    // path re-parsed the [HH:MM:SS] text (second resolution) and set each
+    // utterance's end to the *next* utterance's start — which stretched
+    // every utterance across the following silence/gap. Those bloated
+    // windows overlapped whoever spoke most overall (the DM), collapsing
+    // every diarized label onto a single user. Using the true per-utterance
+    // start/end keeps each window tight to what was actually said.
+    let parsedUtterances = timedUtterances;
 
-    // Refine end times: each utterance ends when the next starts
-    for (let i = 0; i < parsedUtterances.length - 1; i++) {
-      parsedUtterances[i].end = parsedUtterances[i + 1].start;
+    if (parsedUtterances.length === 0) {
+      // Fallback (e.g. a transcript loaded from disk with no timing data):
+      // re-parse the text, but bound each utterance to its spoken length
+      // (~2.5 words/sec) instead of letting it run to the next utterance.
+      const utteranceLines = transcript.split('\n').filter(l => l.trim());
+      parsedUtterances = [];
+      for (const line of utteranceLines) {
+        const match = line.match(/^\[(\d{2}):(\d{2}):(\d{2})\]\s+Speaker\s+(\w+):\s*(.*)$/);
+        if (match) {
+          const ms = (parseInt(match[1]) * 3600 + parseInt(match[2]) * 60 + parseInt(match[3])) * 1000;
+          const wordCount = (match[5].trim().match(/\S+/g) || []).length;
+          const estDuration = Math.max(1000, Math.round((wordCount / 2.5) * 1000));
+          parsedUtterances.push({ speaker: match[4], start: ms, end: ms + estDuration });
+        }
+      }
     }
 
     if (parsedUtterances.length > 0) {
