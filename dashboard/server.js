@@ -11,6 +11,7 @@
 
 const express = require('express');
 const http = require('http');
+const crypto = require('crypto');
 const { Server: SocketIO } = require('socket.io');
 const path = require('path');
 const fs = require('fs');
@@ -23,10 +24,54 @@ const server = http.createServer(app);
 const io = new SocketIO(server);
 
 const PORT = process.env.DASHBOARD_PORT || 3000;
+// Default to loopback only. The dashboard exposes process-control and
+// cost-spending endpoints, so it must not be reachable off-host unless the
+// operator opts in by setting DASHBOARD_HOST (and a token, enforced below).
+const HOST = process.env.DASHBOARD_HOST || '127.0.0.1';
 const ROOT = path.resolve(__dirname, '..');
+
+// Shared secret for dashboard auth. If unset, the server stays on loopback and
+// logs a loud warning rather than silently exposing an open control panel.
+const DASHBOARD_TOKEN = process.env.DASHBOARD_TOKEN || process.env.DASHBOARD_PASSWORD || '';
+
+// ─── Auth ────────────────────────────────────────────────────────────
+
+/** Constant-time string compare that tolerates length mismatch. */
+function safeEqual(a, b) {
+  const ab = Buffer.from(String(a));
+  const bb = Buffer.from(String(b));
+  if (ab.length !== bb.length) return false;
+  return crypto.timingSafeEqual(ab, bb);
+}
+
+/**
+ * Require the shared token on every request when DASHBOARD_TOKEN is set.
+ * Accepts HTTP Basic auth (password = token), a Bearer token, or ?token=.
+ * When no token is configured, requests pass through (loopback-only mode).
+ */
+function requireAuth(req, res, next) {
+  if (!DASHBOARD_TOKEN) return next();
+
+  const header = req.headers.authorization || '';
+  let provided = '';
+  if (header.startsWith('Basic ')) {
+    const decoded = Buffer.from(header.slice(6), 'base64').toString('utf-8');
+    provided = decoded.slice(decoded.indexOf(':') + 1);
+  } else if (header.startsWith('Bearer ')) {
+    provided = header.slice(7);
+  } else if (typeof req.query.token === 'string') {
+    provided = req.query.token;
+  }
+
+  if (provided && safeEqual(provided, DASHBOARD_TOKEN)) return next();
+
+  res.set('WWW-Authenticate', 'Basic realm="D&D Scribe Dashboard"');
+  return res.status(401).json({ error: 'Authentication required.' });
+}
 
 // ─── Middleware ──────────────────────────────────────────────────────
 app.use(express.json());
+app.use(requireAuth); // gate everything (static assets + API) behind the token
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ─── State ──────────────────────────────────────────────────────────
@@ -49,6 +94,62 @@ function broadcastStatus() {
     pipelineStep,
     pipelineTarget,
   });
+}
+
+// ─── Campaign context validation ─────────────────────────────────────
+
+/**
+ * Validate a campaign-context payload before it is written to disk.
+ * Enforces the shape the rest of the pipeline relies on: a plain object with
+ * string scalar fields and array fields of objects/strings. Unknown extra keys
+ * are dropped rather than persisted. Returns { ok, value } or { ok:false, error }.
+ */
+function validateCampaignContext(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return { ok: false, error: 'body must be a JSON object' };
+  }
+
+  const stringFields = ['campaignName', 'setting', 'dmName', 'currentArc', 'notes'];
+  const arrayOfObjectFields = ['playerCharacters', 'recurringNPCs', 'inactiveCharacters'];
+  const arrayOfStringFields = ['locationsVisited', 'plotThreads', 'items'];
+
+  const out = {};
+
+  for (const f of stringFields) {
+    if (body[f] === undefined) continue;
+    if (typeof body[f] !== 'string') return { ok: false, error: `"${f}" must be a string` };
+    out[f] = body[f];
+  }
+
+  for (const f of arrayOfObjectFields) {
+    if (body[f] === undefined) continue;
+    if (!Array.isArray(body[f])) return { ok: false, error: `"${f}" must be an array` };
+    for (const item of body[f]) {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) {
+        return { ok: false, error: `entries of "${f}" must be objects` };
+      }
+    }
+    out[f] = body[f];
+  }
+
+  for (const f of arrayOfStringFields) {
+    if (body[f] === undefined) continue;
+    if (!Array.isArray(body[f]) || body[f].some(s => typeof s !== 'string')) {
+      return { ok: false, error: `"${f}" must be an array of strings` };
+    }
+    out[f] = body[f];
+  }
+
+  // Preserve the flavorBank object verbatim if present (it has a known shape
+  // managed by the generator) but require it to be a plain object.
+  if (body.flavorBank !== undefined) {
+    if (!body.flavorBank || typeof body.flavorBank !== 'object' || Array.isArray(body.flavorBank)) {
+      return { ok: false, error: '"flavorBank" must be an object' };
+    }
+    out.flavorBank = body.flavorBank;
+  }
+
+  return { ok: true, value: out };
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -234,7 +335,13 @@ app.get('/api/stories', (req, res) => {
 });
 
 app.get('/api/stories/:filename', (req, res) => {
-  const filePath = path.join(config.paths.stories, req.params.filename);
+  // Guard against path traversal: collapse to a bare filename, reject anything
+  // that changed (slashes, .. segments) and only allow .md story files.
+  const safeName = path.basename(req.params.filename);
+  if (safeName !== req.params.filename || !safeName.endsWith('.md')) {
+    return res.status(400).json({ error: 'Invalid filename' });
+  }
+  const filePath = path.join(config.paths.stories, safeName);
   if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Not found' });
   res.json({ content: fs.readFileSync(filePath, 'utf-8') });
 });
@@ -292,9 +399,18 @@ app.get('/api/campaign', (req, res) => {
 
 app.put('/api/campaign', (req, res) => {
   const ctxPath = config.paths.campaignContext;
+
+  // Validate the body instead of writing it verbatim — every downstream pass
+  // depends on this file, so a malformed save (wrong type, an array, junk
+  // fields) would corrupt the whole pipeline.
+  const validation = validateCampaignContext(req.body);
+  if (!validation.ok) {
+    return res.status(400).json({ error: `Invalid campaign context: ${validation.error}` });
+  }
+
   try {
     fs.mkdirSync(path.dirname(ctxPath), { recursive: true });
-    fs.writeFileSync(ctxPath, JSON.stringify(req.body, null, 2), 'utf-8');
+    fs.writeFileSync(ctxPath, JSON.stringify(validation.value, null, 2), 'utf-8');
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -391,6 +507,16 @@ app.get('*', (req, res) => {
 //  WebSocket
 // ═══════════════════════════════════════════════════════════════════
 
+// Authenticate socket connections too — they stream live bot/pipeline logs.
+io.use((socket, next) => {
+  if (!DASHBOARD_TOKEN) return next();
+  const token = socket.handshake.auth?.token
+    || socket.handshake.query?.token
+    || '';
+  if (token && safeEqual(token, DASHBOARD_TOKEN)) return next();
+  next(new Error('Authentication required'));
+});
+
 io.on('connection', (socket) => {
   log.debug('Dashboard client connected');
   broadcastStatus();
@@ -404,9 +530,18 @@ io.on('connection', (socket) => {
 //  Start Server
 // ═══════════════════════════════════════════════════════════════════
 
-server.listen(PORT, () => {
-  log.info(`Dashboard running at http://localhost:${PORT}`);
+if (!DASHBOARD_TOKEN) {
+  log.warn(
+    'DASHBOARD_TOKEN is not set — the dashboard is UNAUTHENTICATED and will ' +
+    `bind to ${HOST} only. Set DASHBOARD_TOKEN (and DASHBOARD_HOST to expose it) ` +
+    'before making the control panel reachable off-host.'
+  );
+}
+
+server.listen(PORT, HOST, () => {
+  log.info(`Dashboard running at http://${HOST}:${PORT}`, { authenticated: !!DASHBOARD_TOKEN });
   console.log(`\n  D&D Scribe Bot Dashboard`);
   console.log(`  ────────────────────────`);
-  console.log(`  http://localhost:${PORT}\n`);
+  console.log(`  http://${HOST}:${PORT}`);
+  console.log(`  Auth: ${DASHBOARD_TOKEN ? 'token required' : 'NONE (set DASHBOARD_TOKEN)'}\n`);
 });
