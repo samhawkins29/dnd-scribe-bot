@@ -19,6 +19,7 @@ const config = require('./config');
 const log = require('./logger');
 const { insertSceneBreaks } = require('./transcribe');
 const { classifyTranscriptLines } = require('./classifier');
+const { CostGuard, estimateTokens, costForTokens } = require('./modules/cost');
 
 // ─── Anthropic client ───────────────────────────────────────────────
 
@@ -666,6 +667,25 @@ At the very end, after two blank lines, add a section "## Session Summary" with 
 }
 
 /**
+ * Estimate the USD cost of one verification *attempt*: the regeneration call
+ * (full prompt in, up to maxTokens out) plus the verifier call (transcript +
+ * a story-sized output in, ~4K out). Used only to project worst-case spend and
+ * to decide whether the next attempt would exceed the ceiling — actual spend is
+ * tracked from API usage blocks.
+ */
+function estimateAttemptCost({ systemPrompt, userMessage, transcript, config }) {
+  const model = config.anthropic.model;
+  const maxOut = config.anthropic.maxTokens;
+  // Regeneration: system + user prompt in, full story out.
+  const genIn = estimateTokens(systemPrompt) + estimateTokens(userMessage);
+  const genCost = costForTokens(genIn, maxOut, model);
+  // Verifier: transcript + the generated story (~maxOut tokens) in, ~4K out.
+  const verifyIn = estimateTokens(transcript) + maxOut;
+  const verifyCost = costForTokens(verifyIn, 4096, model);
+  return genCost + verifyCost;
+}
+
+/**
  * Generate the story chapter using Claude.
  *
  * @param {string} transcriptPath  Path to the transcript .txt file
@@ -741,6 +761,25 @@ async function generateStory(transcriptPath, opts = {}) {
     transcriptLines: transcript.split('\n').length,
   });
 
+  // ─── Cost guard ──────────────────────────────────────────────────
+  // One guard for the whole chapter: initial call + every regeneration +
+  // every verifier call. Estimate the per-attempt cost up front so we can log
+  // a worst-case projection and stop the loop before blowing the ceiling.
+  const costGuard = new CostGuard({
+    maxUsd: config.cost.storyMaxUsd,
+    model: config.anthropic.model,
+    label: 'campaign chapter',
+  });
+  const perAttemptCost = estimateAttemptCost({
+    systemPrompt, userMessage, transcript, config,
+  });
+  log.info('Story cost estimate', {
+    perAttemptUsd: Number(perAttemptCost.toFixed(3)),
+    maxAttempts: config.verification.campaignMaxAttempts,
+    worstCaseUsd: Number((perAttemptCost * config.verification.campaignMaxAttempts).toFixed(3)),
+    ceilingUsd: config.cost.storyMaxUsd || null,
+  });
+
   // Call Claude
   const response = await anthropic.messages.create({
     model: config.anthropic.model,
@@ -748,6 +787,7 @@ async function generateStory(transcriptPath, opts = {}) {
     system: systemPrompt,
     messages: [{ role: 'user', content: userMessage }],
   });
+  costGuard.record(response.usage, config.anthropic.model);
 
   let fullText = response.content
     .filter(block => block.type === 'text')
@@ -778,7 +818,7 @@ async function generateStory(transcriptPath, opts = {}) {
 
   for (let attempt = 1; attempt <= MAX_VERIFICATION_ATTEMPTS; attempt++) {
     log.info(`Story verification attempt ${attempt}/${MAX_VERIFICATION_ATTEMPTS}`);
-    verificationResult = await verifyStory(transcript, storyContent, campaignCtx);
+    verificationResult = await verifyStory(transcript, storyContent, campaignCtx, costGuard);
 
     // Track the best attempt so far
     if (verificationResult.accuracy_score > bestScore) {
@@ -792,6 +832,17 @@ async function generateStory(transcriptPath, opts = {}) {
         attempt,
         accuracy_score: verificationResult.accuracy_score,
       });
+      break;
+    }
+
+    // Cost ceiling: stop before a regeneration that would blow the budget.
+    if (attempt < MAX_VERIFICATION_ATTEMPTS && costGuard.wouldExceed(perAttemptCost)) {
+      log.warn('Story cost ceiling reached, stopping regeneration and keeping best attempt', {
+        ...costGuard.summary(),
+        best_accuracy_score: bestScore,
+      });
+      storyContent = bestStoryContent;
+      summary = bestSummary;
       break;
     }
 
@@ -827,6 +878,7 @@ async function generateStory(transcriptPath, opts = {}) {
         system: systemPrompt,
         messages: [{ role: 'user', content: userMessage + correctionNote }],
       });
+      costGuard.record(retryResponse.usage, config.anthropic.model);
 
       fullText = retryResponse.content
         .filter(block => block.type === 'text')
@@ -854,6 +906,8 @@ async function generateStory(transcriptPath, opts = {}) {
       summary = bestSummary;
     }
   }
+
+  log.info('Story generation cost', costGuard.summary());
 
   // ─── Save verification history ───────────────────────────────────
   if (verificationResult) {
@@ -982,6 +1036,22 @@ async function generateOneShotStory(transcriptPath, opts = {}) {
     mode: 'oneshot',
   });
 
+  // ─── Cost guard (shared across initial call + retries + verifier) ──
+  const costGuard = new CostGuard({
+    maxUsd: config.cost.storyMaxUsd,
+    model: config.anthropic.model,
+    label: 'one-shot story',
+  });
+  const perAttemptCost = estimateAttemptCost({
+    systemPrompt, userMessage, transcript, config,
+  });
+  log.info('One-shot cost estimate', {
+    perAttemptUsd: Number(perAttemptCost.toFixed(3)),
+    maxAttempts: config.verification.oneShotMaxAttempts,
+    worstCaseUsd: Number((perAttemptCost * config.verification.oneShotMaxAttempts).toFixed(3)),
+    ceilingUsd: config.cost.storyMaxUsd || null,
+  });
+
   // Call Claude
   const response = await anthropic.messages.create({
     model: config.anthropic.model,
@@ -989,6 +1059,7 @@ async function generateOneShotStory(transcriptPath, opts = {}) {
     system: systemPrompt,
     messages: [{ role: 'user', content: userMessage }],
   });
+  costGuard.record(response.usage, config.anthropic.model);
 
   let fullText = response.content
     .filter(block => block.type === 'text')
@@ -1019,7 +1090,7 @@ async function generateOneShotStory(transcriptPath, opts = {}) {
 
   for (let attempt = 1; attempt <= MAX_VERIFICATION_ATTEMPTS; attempt++) {
     log.info(`One-shot story verification attempt ${attempt}/${MAX_VERIFICATION_ATTEMPTS}`);
-    verificationResult = await verifyStory(transcript, storyContent, mergedCtx);
+    verificationResult = await verifyStory(transcript, storyContent, mergedCtx, costGuard);
 
     // Track the best attempt so far
     if (verificationResult.accuracy_score > bestScore) {
@@ -1033,6 +1104,17 @@ async function generateOneShotStory(transcriptPath, opts = {}) {
         attempt,
         accuracy_score: verificationResult.accuracy_score,
       });
+      break;
+    }
+
+    // Cost ceiling: stop before a regeneration that would blow the budget.
+    if (attempt < MAX_VERIFICATION_ATTEMPTS && costGuard.wouldExceed(perAttemptCost)) {
+      log.warn('One-shot cost ceiling reached, stopping regeneration and keeping best attempt', {
+        ...costGuard.summary(),
+        best_accuracy_score: bestScore,
+      });
+      storyContent = bestStoryContent;
+      summary = bestSummary;
       break;
     }
 
@@ -1067,6 +1149,7 @@ async function generateOneShotStory(transcriptPath, opts = {}) {
         system: systemPrompt,
         messages: [{ role: 'user', content: userMessage + correctionNote }],
       });
+      costGuard.record(retryResponse.usage, config.anthropic.model);
 
       fullText = retryResponse.content
         .filter(block => block.type === 'text')
@@ -1093,6 +1176,8 @@ async function generateOneShotStory(transcriptPath, opts = {}) {
       summary = bestSummary;
     }
   }
+
+  log.info('One-shot generation cost', costGuard.summary());
 
   // ─── Save verification history (shared with campaign, tagged by sessionType) ──
   if (verificationResult) {
@@ -1166,9 +1251,10 @@ async function generateOneShotStory(transcriptPath, opts = {}) {
  * @param {string} transcript       The source transcript text
  * @param {string} story            The generated story text
  * @param {object} campaignContext   Parsed campaign-context.json
+ * @param {object} [costGuard]        Optional CostGuard to record verifier usage into
  * @returns {Promise<{fabrications: Array, omissions: Array, accuracy_score: number}>}
  */
-async function verifyStory(transcript, story, campaignContext) {
+async function verifyStory(transcript, story, campaignContext, costGuard = null) {
   const knownCharacters = [];
   if (campaignContext) {
     if (campaignContext.playerCharacters) {
@@ -1222,6 +1308,8 @@ Return ONLY valid JSON (no markdown fences) in this exact format:
         content: `${verificationPrompt}\n\n=== SOURCE TRANSCRIPT ===\n${transcript}\n\n=== GENERATED STORY ===\n${story}`,
       }],
     });
+
+    if (costGuard) costGuard.record(response.usage, config.anthropic.model);
 
     rawText = response.content
       .filter(b => b.type === 'text')

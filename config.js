@@ -101,8 +101,22 @@ const config = {
   verification: {
     campaignThreshold: parseInt(process.env.CAMPAIGN_VERIFICATION_THRESHOLD, 10) || 70,
     oneShotThreshold: parseInt(process.env.ONESHOT_VERIFICATION_THRESHOLD, 10) || 80,
-    campaignMaxAttempts: parseInt(process.env.CAMPAIGN_MAX_VERIFICATION_ATTEMPTS, 10) || 4,
-    oneShotMaxAttempts: parseInt(process.env.ONESHOT_MAX_VERIFICATION_ATTEMPTS, 10) || 10,
+    // Each attempt resends the full transcript (generate) plus a verifier call
+    // (transcript + story). Defaults trimmed from 4/10 to bound spend on long
+    // sessions; the dollar ceiling below short-circuits the loop earlier still.
+    campaignMaxAttempts: parseInt(process.env.CAMPAIGN_MAX_VERIFICATION_ATTEMPTS, 10) || 3,
+    oneShotMaxAttempts: parseInt(process.env.ONESHOT_MAX_VERIFICATION_ATTEMPTS, 10) || 4,
+  },
+
+  // ─── Cost controls ───────────────────────────────────────────────
+  cost: {
+    /**
+     * Hard ceiling (USD) on a single story generation, counting the initial
+     * call + all verification regenerations + verifier calls. When the next
+     * attempt's estimated cost would push past this, the loop stops and keeps
+     * the best story so far. Set to 0 to disable the ceiling.
+     */
+    storyMaxUsd: parseFloat(process.env.STORY_MAX_USD) || 5,
   },
 
   // ─── Paths ────────────────────────────────────────────────────────
