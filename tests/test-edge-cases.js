@@ -8,6 +8,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const {
   suite, test, assertEqual, assertTrue, assertFalse,
   assertThrows, assertThrowsAsync, assertIncludes, assertType,
@@ -253,8 +254,9 @@ test('session filename avoids invalid filesystem characters', () => {
 suite('Edge Cases — Concurrent Access');
 
 test('multiple writes to campaign log do not corrupt file', () => {
-  // Use /tmp for test files to avoid permission issues with mounted directories
-  const testLogPath = path.join('/tmp', `_test_concurrent_log_${Date.now()}.md`);
+  // Use the OS temp dir (os.tmpdir()) so this works on Windows too — a literal
+  // '/tmp' resolves to a non-existent C:\tmp on Windows and the appends ENOENT.
+  const testLogPath = path.join(os.tmpdir(), `_test_concurrent_log_${Date.now()}.md`);
 
   // Simulate sequential appends (JS is single-threaded so this tests the pattern)
   for (let i = 0; i < 10; i++) {

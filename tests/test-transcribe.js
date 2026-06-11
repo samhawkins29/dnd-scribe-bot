@@ -8,6 +8,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const {
   suite, test, assertEqual, assertTrue, assertFalse,
   assertThrows, assertThrowsAsync, assertIncludes, assertMatch,
@@ -128,7 +129,10 @@ test('transcribe rejects non-existent file', async () => {
 });
 
 test('transcribe rejects with clear error message including path', async () => {
-  const fakePath = '/tmp/definitely-not-a-file-xyz.ogg';
+  // OS-agnostic: transcribe() path.resolve()s its argument, so an already
+  // absolute path (built from the OS temp dir) appears verbatim in the error
+  // on both POSIX and Windows.
+  const fakePath = path.join(os.tmpdir(), 'definitely-not-a-file-xyz.ogg');
   try {
     await transcribeModule.transcribe(fakePath);
     assertTrue(false, 'Should have thrown');

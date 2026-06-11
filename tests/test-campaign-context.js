@@ -101,10 +101,12 @@ test('each player character has backstory', () => {
   }
 });
 
-test('each player character has playerName', () => {
+test('each player character has player', () => {
+  // The schema (and character-detector.js / verifyStory) uses `player`, not
+  // `playerName`. This test previously asserted the wrong field name.
   for (const pc of campaignContext.playerCharacters) {
-    assertHasProperty(pc, 'playerName');
-    assertType(pc.playerName, 'string');
+    assertHasProperty(pc, 'player');
+    assertType(pc.player, 'string');
   }
 });
 

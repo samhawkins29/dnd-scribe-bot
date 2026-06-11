@@ -130,7 +130,10 @@ suite('generate-story.js — Story File Saving');
 
 test('story is saved as markdown file', () => {
   assertIncludes(genSource, '.md');
-  assertIncludes(genSource, "fs.writeFileSync(storyPath, storyContent, 'utf-8')");
+  // The chapter is written to storyPath with a metadata header prepended to
+  // the story content.
+  assertIncludes(genSource, 'fs.writeFileSync(storyPath, metadataHeader');
+  assertIncludes(genSource, 'storyContent');
 });
 
 test('campaign log is appended with chapter summary', () => {
