@@ -5,7 +5,7 @@
  * or edit the defaults below directly (not recommended for secrets).
  */
 
-require('dotenv').config();
+require('dotenv').config({ override: true });
 const path = require('path');
 
 const config = {
@@ -21,6 +21,13 @@ const config = {
     apiKey: process.env.ANTHROPIC_API_KEY || 'YOUR_ANTHROPIC_API_KEY_HERE',
     model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514',
     maxTokens: parseInt(process.env.ANTHROPIC_MAX_TOKENS, 10) || 8192,
+    // Output budget for passes that echo the whole transcript back
+    // (classifier, corrector). Must be large enough that a multi-hour
+    // session isn't silently truncated mid-response. Sonnet 4 supports up
+    // to 64K output tokens; 32K comfortably handles a multi-hour session,
+    // and the classifier also chunks long input so it never relies on a
+    // single response covering everything.
+    transcriptMaxTokens: parseInt(process.env.ANTHROPIC_TRANSCRIPT_MAX_TOKENS, 10) || 32768,
   },
 
   // ─── Transcription ────────────────────────────────────────────────
@@ -90,6 +97,14 @@ const config = {
     ffmpegPath: process.env.FFMPEG_PATH || 'ffmpeg',
   },
 
+  // ─── Verification ────────────────────────────────────────────────
+  verification: {
+    campaignThreshold: parseInt(process.env.CAMPAIGN_VERIFICATION_THRESHOLD, 10) || 70,
+    oneShotThreshold: parseInt(process.env.ONESHOT_VERIFICATION_THRESHOLD, 10) || 80,
+    campaignMaxAttempts: parseInt(process.env.CAMPAIGN_MAX_VERIFICATION_ATTEMPTS, 10) || 4,
+    oneShotMaxAttempts: parseInt(process.env.ONESHOT_MAX_VERIFICATION_ATTEMPTS, 10) || 10,
+  },
+
   // ─── Paths ────────────────────────────────────────────────────────
   paths: {
     recordings: path.resolve(__dirname, 'recordings'),
@@ -98,7 +113,9 @@ const config = {
     lore: path.resolve(__dirname, 'lore'),
     logs: path.resolve(__dirname, 'logs'),
     campaignContext: path.resolve(__dirname, 'lore', 'campaign-context.json'),
+    oneshotContext: path.resolve(__dirname, 'lore', 'oneshot-context.json'),
     campaignLog: path.resolve(__dirname, 'stories', 'campaign-log.md'),
+    sessionsLog: path.resolve(__dirname, 'stories', 'sessions.json'),
   },
 
   // ─── Logging ──────────────────────────────────────────────────────
