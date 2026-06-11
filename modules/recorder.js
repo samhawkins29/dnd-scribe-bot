@@ -16,7 +16,7 @@ const fs = require('fs');
 const path = require('path');
 const config = require('../config');
 const log = require('../logger');
-const { makeEmbed, postCommandDictionary, formatDuration } = require('./discord-utils');
+const { makeEmbed, postCommandDictionary, postRecordingNotice, formatDuration } = require('./discord-utils');
 const {
   safePath,
   sessionTimestamp,
@@ -415,6 +415,14 @@ async function startRecording(guildId, voiceChannel, textChannel, mode = 'standa
     });
 
     log.info('Recording started', { guildId, channel: voiceChannel.name, mode });
+
+    // ── Recording notice (consent / awareness) ────────────────────────
+    // Discord ToS and many jurisdictions expect explicit notice that voice
+    // is being captured. Post a prominent, unmissable notice to the channel
+    // so everyone present knows recording is active and where their audio goes.
+    postRecordingNotice(textChannel, voiceChannel).catch(err => {
+      log.warn('Failed to post recording notice', { error: err.message });
+    });
 
     // Post the command dictionary once when joining a voice channel for recording
     postCommandDictionary(textChannel).catch(err => {

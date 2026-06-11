@@ -108,6 +108,16 @@ const config = {
     oneShotMaxAttempts: parseInt(process.env.ONESHOT_MAX_VERIFICATION_ATTEMPTS, 10) || 4,
   },
 
+  // ─── Privacy / data handling ─────────────────────────────────────
+  // See PRIVACY.md. These are read by tooling/operators; raw audio retention
+  // and consent posture are documented there.
+  privacy: {
+    /** Days to keep raw recordings before they may be purged (0 = keep forever). */
+    audioRetentionDays: parseInt(process.env.AUDIO_RETENTION_DAYS, 10) || 0,
+    /** If true, delete the raw recording after a fully successful pipeline (backup is kept). */
+    deleteAudioAfterProcessing: process.env.DELETE_AUDIO_AFTER_PROCESSING === 'true',
+  },
+
   // ─── Cost controls ───────────────────────────────────────────────
   cost: {
     /**

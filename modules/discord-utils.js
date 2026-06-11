@@ -181,6 +181,33 @@ async function postCommandDictionary(channel) {
 }
 
 /**
+ * Post a prominent "now recording" notice so everyone in the channel is aware
+ * their voice is being captured and where the audio is sent. Required for
+ * Discord ToS / consent awareness.
+ */
+async function postRecordingNotice(channel, voiceChannel) {
+  const where = voiceChannel?.name ? ` in **${voiceChannel.name}**` : '';
+  const embed = new EmbedBuilder()
+    .setTitle('🔴 Now recording')
+    .setColor(0xE02424)
+    .setDescription(
+      `Everyone${where} is being **recorded** for an automated session recap.\n\n` +
+      '• Your voice audio is captured while recording is active.\n' +
+      '• Audio is transcribed (locally or via a cloud transcription service) and ' +
+      'the transcript is sent to an AI model to write the recap.\n' +
+      '• If you do **not** consent, leave the voice channel now or ask the DM to stop recording (`!stop`).'
+    )
+    .setFooter({ text: 'Recording stays active until someone runs !stop or /stop.' })
+    .setTimestamp();
+  try {
+    await channel.send({ embeds: [embed] });
+  } catch (err) {
+    const log = require('../logger');
+    log.warn('Failed to post recording notice', { error: err.message });
+  }
+}
+
+/**
  * Format a duration in milliseconds to HH:MM:SS.
  */
 function formatDuration(ms) {
@@ -201,5 +228,6 @@ module.exports = {
   loadCampaignContextForRecap,
   buildCommandEmbed,
   postCommandDictionary,
+  postRecordingNotice,
   formatDuration,
 };

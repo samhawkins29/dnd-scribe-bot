@@ -74,6 +74,25 @@ async function validateRecordingSize(textChannel, audioPath) {
   }
 }
 
+/**
+ * Optionally delete the raw recording after a fully successful pipeline run.
+ * Opt-in via config.privacy.deleteAudioAfterProcessing. Only ever removes a
+ * file inside recordings/ (never a backup), and only after success — the
+ * failure path always keeps the audio for retry. See PRIVACY.md.
+ */
+function maybePurgeRawAudio(audioPath) {
+  if (!config.privacy?.deleteAudioAfterProcessing) return;
+  try {
+    const resolved = path.resolve(audioPath);
+    const recordingsDir = path.resolve(config.paths.recordings);
+    if (!resolved.startsWith(recordingsDir + path.sep)) return; // safety: only purge in recordings/
+    fs.unlinkSync(resolved);
+    log.info('Raw recording purged after successful processing (privacy policy)', { audioPath: resolved });
+  } catch (err) {
+    log.warn('Failed to purge raw recording (non-fatal)', { error: err.message });
+  }
+}
+
 // ─── Transcript enrichment (between transcription and story generation) ──
 
 /**
@@ -188,6 +207,9 @@ async function runPipelineWithUpdates(textChannel, audioPath, sessionDurationMs 
         true,
       )],
     });
+
+    // Privacy: optionally purge the raw recording now that processing succeeded.
+    maybePurgeRawAudio(audioPath);
 
     // ── Fire-and-forget: detect new characters after story is posted ──
     (async () => {
@@ -344,6 +366,9 @@ async function runOneShotPipelineWithUpdates(textChannel, audioPath, sessionDura
         true,
       )],
     });
+
+    // Privacy: optionally purge the raw recording now that processing succeeded.
+    maybePurgeRawAudio(audioPath);
 
     // ── Fire-and-forget: extract flavor descriptions for the flavor bank ──
     (async () => {
