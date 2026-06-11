@@ -646,11 +646,27 @@ async function transcribeAssemblyAIOnce(audioPath, opts = {}) {
   const { id: transcriptId } = await transcriptRes.json();
   log.info('Transcription job created', { transcriptId });
 
-  // Step 3: Poll until complete
-  log.info('Waiting for transcription to complete...', { transcriptId });
+  // Step 3: Poll until complete — bounded by a wall-clock budget so a job
+  // stuck in a non-terminal state (queued/processing forever) can't hang the
+  // pipeline indefinitely. An unbounded loop here would hold the per-guild
+  // processing lock until the process is restarted, blocking all recordings.
+  const POLL_INTERVAL_MS = 5000;
+  const POLL_TIMEOUT_MS = parseInt(process.env.ASSEMBLYAI_POLL_TIMEOUT_MS, 10) || 45 * 60 * 1000;
+  const deadline = Date.now() + POLL_TIMEOUT_MS;
+  log.info('Waiting for transcription to complete...', {
+    transcriptId,
+    timeoutMinutes: Math.round(POLL_TIMEOUT_MS / 60000),
+  });
   let result;
   while (true) {
-    await new Promise(r => setTimeout(r, 5000));
+    if (Date.now() >= deadline) {
+      throw new Error(
+        `AssemblyAI transcription timed out after ${Math.round(POLL_TIMEOUT_MS / 60000)} min ` +
+        `(transcriptId ${transcriptId}, last status: ${result?.status || 'unknown'})`
+      );
+    }
+
+    await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
 
     const pollRes = await fetch(`${baseUrl}/transcript/${transcriptId}`, {
       headers: { authorization: apiKey },
