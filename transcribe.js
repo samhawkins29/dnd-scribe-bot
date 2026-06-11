@@ -331,6 +331,110 @@ function matchSpeakersToUsers(utterances, sessionData) {
 }
 
 /**
+ * Ground-truth diarization from the per-user audio streams.
+ *
+ * The recorder captures each user on their own silence-padded PCM stream and
+ * logs exactly when each user's stream had audio (Discord `speaking` start/end
+ * events → sessionData.segments, absolute wall-clock ms). That speaking
+ * timeline IS who-spoke-when — it doesn't need to be re-derived from the mixed
+ * file by the cloud diarizer.
+ *
+ * The old path mapped each cloud "Speaker X" label to a single user by voting
+ * (matchSpeakersToUsers). One mislabeled cloud speaker then dragged all of its
+ * utterances onto whoever talked most overall — the DM — collapsing the whole
+ * session onto one name. Here we instead assign EACH utterance independently to
+ * the user whose speaking segment best overlaps it, so a single bad attribution
+ * can never cascade. The cloud speaker labels are discarded entirely.
+ *
+ * Returns relabeled utterances (each `.speaker` set to its owning userId) plus a
+ * 1:1 speakerToUser map, so the existing applySpeakerLabels rendering (character
+ * names, mid-session character switches, unmapped-user detection) is reused as-is.
+ *
+ * @param {Array<{ speaker: string, start: number, end: number, text?: string }>} utterances
+ * @param {{ sessionStart: number, segments: Array<{ userId: string, startTime: number, endTime: number }>, users: Object }} sessionData
+ * @returns {{ utterances: Array, speakerToUser: Object<string,string>, assigned: number, total: number }}
+ */
+function assignUtterancesToUsers(utterances, sessionData) {
+  if (!sessionData || !Array.isArray(sessionData.segments) || sessionData.segments.length === 0) {
+    return { utterances, speakerToUser: {}, assigned: 0, total: utterances.length };
+  }
+
+  const sessionStart = sessionData.sessionStart;
+  const segments = sessionData.segments;
+
+  // No timeline warp: the per-user PCM streams are silence-padded from the same
+  // sessionStart, so an utterance at audio-time T sits at wall-clock
+  // sessionStart + T. We assign each utterance independently to the user whose
+  // recorded speaking segment overlaps it, which is local and robust to the
+  // small drift a (rare) capped silence gap could introduce — exactly the point
+  // of using ground truth instead of the global linear-warp heuristic.
+
+  const relabeled = [];
+  let assigned = 0;
+  const usersSeen = new Set();
+
+  for (const utt of utterances) {
+    const uttStart = sessionStart + utt.start;
+    const uttEnd = sessionStart + utt.end;
+    const uttMid = (uttStart + uttEnd) / 2;
+
+    // 1) Prefer the user with the most overlap with this utterance's window.
+    let bestUser = null;
+    let bestOverlap = 0;
+    // 2) Tie-break / fallback: the user whose segment midpoint is nearest.
+    let nearestUser = null;
+    let nearestDist = Infinity;
+
+    for (const seg of segments) {
+      const overlapStart = Math.max(uttStart, seg.startTime);
+      const overlapEnd = Math.min(uttEnd, seg.endTime);
+      const overlap = overlapEnd - overlapStart;
+      if (overlap > bestOverlap) {
+        bestOverlap = overlap;
+        bestUser = seg.userId;
+      }
+      const dist = Math.abs(((seg.startTime + seg.endTime) / 2) - uttMid);
+      if (dist < nearestDist) {
+        nearestDist = dist;
+        nearestUser = seg.userId;
+      }
+    }
+
+    const chosen = bestUser || nearestUser;
+    if (bestUser) assigned++;
+    if (chosen) usersSeen.add(chosen);
+
+    // Relabel the utterance with its owning user so downstream rendering keys
+    // off ground truth, not the cloud label. Keep the original if unresolved.
+    relabeled.push(chosen ? { ...utt, speaker: chosen } : { ...utt });
+  }
+
+  // 1:1 map: each surfaced label IS a userId.
+  const speakerToUser = {};
+  for (const uid of usersSeen) speakerToUser[uid] = uid;
+
+  log.info('Ground-truth diarization', {
+    utterances: utterances.length,
+    assignedByOverlap: assigned,
+    distinctUsers: usersSeen.size,
+  });
+
+  return { utterances: relabeled, speakerToUser, assigned, total: utterances.length };
+}
+
+/**
+ * Render utterances (already relabeled so `.speaker` is a userId) back into the
+ * `[HH:MM:SS] Speaker <userId>: text` line format that applySpeakerLabels
+ * consumes. Used after assignUtterancesToUsers so the rest of the speaker→name
+ * pipeline is unchanged.
+ */
+function renderUtterancesWithLabels(utterances) {
+  return utterances
+    .map(u => `[${formatTime(u.start)}] Speaker ${u.speaker}: ${u.text || ''}`)
+    .join('\n');
+}
+
+/**
  * Replace generic speaker labels in a transcript with "PlayerName (CharacterName):" format.
  * Falls back to Discord display name if no character mapping exists.
  * Handles character switches: if a user switched characters mid-session, the label
@@ -939,11 +1043,32 @@ async function transcribe(audioPath, opts = {}) {
     }
 
     if (parsedUtterances.length > 0) {
-      const speakerToUser = matchSpeakersToUsers(parsedUtterances, sessionData);
+      // Ground-truth diarization: when we have real per-utterance text AND the
+      // recorder's per-user speaking timeline, attribute each utterance directly
+      // to its owning user from that timeline (see assignUtterancesToUsers),
+      // discarding the cloud "Speaker X" labels. This replaces the fragile
+      // per-label vote + timeline-warp that kept collapsing onto the DM.
+      const haveText = parsedUtterances.every(u => typeof u.text === 'string');
+      const haveSegments = sessionData && Array.isArray(sessionData.segments) && sessionData.segments.length > 0;
+
+      let workingTranscript = transcript;
+      let speakerToUser;
+
+      if (haveText && haveSegments) {
+        const gt = assignUtterancesToUsers(parsedUtterances, sessionData);
+        speakerToUser = gt.speakerToUser;
+        // Re-render lines as "Speaker <userId>:" so applySpeakerLabels resolves
+        // them to character names via the now-1:1, ground-truth mapping.
+        workingTranscript = renderUtterancesWithLabels(gt.utterances);
+      } else {
+        // Fallback (no timing/text, e.g. a transcript reloaded from disk):
+        // the older cloud-label vote against speaking segments.
+        speakerToUser = matchSpeakersToUsers(parsedUtterances, sessionData);
+      }
       log.info('Speaker-to-user mapping result', { mappings: speakerToUser });
 
       const { transcript: mappedTranscript, unmappedUsers } = applySpeakerLabels(
-        transcript, speakerToUser, speakerMap, sessionData, speakerMapPath
+        workingTranscript, speakerToUser, speakerMap, sessionData, speakerMapPath
       );
       transcript = mappedTranscript;
 
@@ -1025,10 +1150,22 @@ function remapFromCache(cachePath) {
   const sessionData = loadSessionSpeakers();
   if (!sessionData) throw new Error('No speakers.json found to map against');
 
-  const speakerToUser = matchSpeakersToUsers(utterances, sessionData);
+  // Ground-truth diarization from the per-user speaking timeline (the cache
+  // retains real per-utterance text + timing), falling back to the cloud-label
+  // vote only if no speaking segments were recorded.
+  const haveSegments = Array.isArray(sessionData.segments) && sessionData.segments.length > 0;
+  let renderText = text;
+  let speakerToUser;
+  if (haveSegments) {
+    const gt = assignUtterancesToUsers(utterances, sessionData);
+    speakerToUser = gt.speakerToUser;
+    renderText = renderUtterancesWithLabels(gt.utterances);
+  } else {
+    speakerToUser = matchSpeakersToUsers(utterances, sessionData);
+  }
   log.info('Speaker-to-user mapping result (remap)', { mappings: speakerToUser });
 
-  const { transcript, unmappedUsers } = applySpeakerLabels(text, speakerToUser, speakerMap, sessionData);
+  const { transcript, unmappedUsers } = applySpeakerLabels(renderText, speakerToUser, speakerMap, sessionData);
 
   const outFile = outputPath();
   fs.mkdirSync(path.dirname(outFile), { recursive: true });
@@ -1099,4 +1236,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { transcribe, findLatestRecording, insertSceneBreaks, buildCustomVocabulary, preprocessAudio, matchSpeakersToUsers, applySpeakerLabels, remapFromCache };
+module.exports = { transcribe, findLatestRecording, insertSceneBreaks, buildCustomVocabulary, preprocessAudio, matchSpeakersToUsers, assignUtterancesToUsers, renderUtterancesWithLabels, applySpeakerLabels, remapFromCache };

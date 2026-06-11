@@ -71,6 +71,53 @@ test('formatTime(500) rounds down partial seconds to 00:00:00', () => {
   assertEqual(formatTime(500), '00:00:00');
 });
 
+suite('transcribe.js — Ground-truth diarization (assignUtterancesToUsers)');
+
+test('module exports assignUtterancesToUsers', () => {
+  assertType(transcribeModule.assignUtterancesToUsers, 'function');
+});
+
+test('attributes each utterance to the user actually speaking (no collapse)', () => {
+  const s = 1_000_000;
+  // DM (A) dominates the session; Player (B) speaks once at 12-15s.
+  const sessionData = {
+    sessionStart: s,
+    users: { A: 'DM', B: 'Player' },
+    segments: [
+      { userId: 'A', startTime: s + 0, endTime: s + 10_000 },
+      { userId: 'B', startTime: s + 12_000, endTime: s + 15_000 },
+      { userId: 'A', startTime: s + 20_000, endTime: s + 60_000 },
+    ],
+  };
+  // The cloud diarizer lumped everything under one label "A" — the collapse case.
+  const utterances = [
+    { speaker: 'A', start: 1_000, end: 5_000, text: 'DM intro' },
+    { speaker: 'A', start: 12_500, end: 14_500, text: 'Player line' },
+    { speaker: 'A', start: 25_000, end: 30_000, text: 'DM narration' },
+  ];
+  const gt = transcribeModule.assignUtterancesToUsers(utterances, sessionData);
+  assertEqual(gt.utterances[0].speaker, 'A');
+  assertEqual(gt.utterances[1].speaker, 'B'); // would have collapsed onto A before
+  assertEqual(gt.utterances[2].speaker, 'A');
+  assertEqual(Object.keys(gt.speakerToUser).length, 2);
+});
+
+test('returns input unchanged when no speaking segments exist', () => {
+  const utterances = [{ speaker: 'A', start: 0, end: 1000, text: 'hi' }];
+  const gt = transcribeModule.assignUtterancesToUsers(utterances, { sessionStart: 0, segments: [] });
+  assertEqual(gt.utterances.length, 1);
+  assertEqual(Object.keys(gt.speakerToUser).length, 0);
+});
+
+test('renderUtterancesWithLabels round-trips userId labels into Speaker lines', () => {
+  const text = transcribeModule.renderUtterancesWithLabels([
+    { speaker: 'A', start: 0, end: 1000, text: 'hello' },
+    { speaker: 'B', start: 2000, end: 3000, text: 'world' },
+  ]);
+  assertIncludes(text, '[00:00:00] Speaker A: hello');
+  assertIncludes(text, '[00:00:02] Speaker B: world');
+});
+
 suite('transcribe.js — File Validation');
 
 test('transcribe rejects non-existent file', async () => {
