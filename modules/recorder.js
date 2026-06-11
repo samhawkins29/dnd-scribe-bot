@@ -23,6 +23,7 @@ const {
   backupRecording,
   ensureDir,
 } = require('./recovery');
+const { resolveWorkspace } = require('./workspace');
 
 // ─── State per guild ────────────────────────────────────────────────
 /** @type {Map<string, RecordingSession>} */
@@ -573,8 +574,8 @@ function handleSwitchChar(guildId, userId, displayName, newCharacter) {
     newCharacter: newCharacter.trim(),
   });
 
-  // Update speaker-map.json with the new character name
-  const speakerMapPath = path.join(config.paths.lore, 'speaker-map.json');
+  // Update speaker-map.json with the new character name (per-guild)
+  const speakerMapPath = resolveWorkspace(guildId).speakerMap;
   try {
     let speakerMap = { users: {} };
     if (fs.existsSync(speakerMapPath)) {
@@ -584,6 +585,7 @@ function handleSwitchChar(guildId, userId, displayName, newCharacter) {
       displayName: displayName,
       characterName: newCharacter.trim(),
     };
+    fs.mkdirSync(path.dirname(speakerMapPath), { recursive: true });
     fs.writeFileSync(speakerMapPath, JSON.stringify(speakerMap, null, 2), 'utf-8');
     log.info('Speaker map updated for character switch', { userId, newCharacter: newCharacter.trim() });
   } catch (err) {

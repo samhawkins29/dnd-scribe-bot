@@ -20,6 +20,7 @@ const log = require('./logger');
 const { insertSceneBreaks } = require('./transcribe');
 const { classifyTranscriptLines } = require('./classifier');
 const { CostGuard, estimateTokens, costForTokens } = require('./modules/cost');
+const { resolveWorkspace } = require('./modules/workspace');
 
 // ─── Anthropic client ───────────────────────────────────────────────
 
@@ -38,8 +39,8 @@ function findLatestTranscript() {
   return path.join(dir, files[0].name);
 }
 
-function nextChapterNumber() {
-  const dir = config.paths.stories;
+function nextChapterNumber(ws = resolveWorkspace()) {
+  const dir = ws.stories;
   if (!fs.existsSync(dir)) return 1;
   const chapters = fs.readdirSync(dir)
     .filter(f => /^chapter-\d+/.test(f))
@@ -48,8 +49,8 @@ function nextChapterNumber() {
   return (chapters[0] || 0) + 1;
 }
 
-function loadCampaignContext() {
-  const ctxPath = config.paths.campaignContext;
+function loadCampaignContext(ws = resolveWorkspace()) {
+  const ctxPath = ws.campaignContext;
   if (!fs.existsSync(ctxPath)) {
     log.warn('No campaign-context.json found — generating without campaign context');
     return null;
@@ -62,8 +63,8 @@ function loadCampaignContext() {
   }
 }
 
-function loadOneShotContext() {
-  const ctxPath = config.paths.oneshotContext;
+function loadOneShotContext(ws = resolveWorkspace()) {
+  const ctxPath = ws.oneshotContext;
   if (!fs.existsSync(ctxPath)) {
     log.warn('No oneshot-context.json found — one-shot will use campaign characters');
     return null;
@@ -95,8 +96,8 @@ function buildMetadataHeader({ type, date, characters, chapter, title }) {
 /**
  * Append a session record to stories/sessions.json for persistence across restarts.
  */
-function logSession(sessionData) {
-  const logPath = config.paths.sessionsLog;
+function logSession(sessionData, ws = resolveWorkspace()) {
+  const logPath = ws.sessionsLog;
   let data = { sessions: [] };
   if (fs.existsSync(logPath)) {
     try {
@@ -124,8 +125,8 @@ function extractTitleFromStory(storyContent) {
   return match ? match[1].trim() : null;
 }
 
-function loadPreviousChapterSummaries() {
-  const logPath = config.paths.campaignLog;
+function loadPreviousChapterSummaries(ws = resolveWorkspace()) {
+  const logPath = ws.campaignLog;
   if (!fs.existsSync(logPath)) return '';
   return fs.readFileSync(logPath, 'utf-8');
 }
@@ -297,8 +298,8 @@ function categorizeFabrication(claim) {
  *
  * @returns {string} Lessons learned text, or empty string if no history exists.
  */
-function getHistoricalPatterns() {
-  const historyPath = path.join(config.paths.stories, 'verification-history.json');
+function getHistoricalPatterns(ws = resolveWorkspace()) {
+  const historyPath = ws.verificationHistory;
 
   if (!fs.existsSync(historyPath)) {
     log.info('No verification history found — skipping cross-session learning');
@@ -531,7 +532,7 @@ matters, and the reader wants to immediately start the next chapter.`,
  * Build the full system prompt by combining the style-specific prompt
  * with shared guardrails and the active creativity level.
  */
-function buildSystemPrompt(style) {
+function buildSystemPrompt(style, ws = resolveWorkspace()) {
   const stylePrompt = STYLE_PROMPTS[style];
   if (!stylePrompt) throw new Error(`Unknown style: ${style}. Use 'martin' or 'sanderson'.`);
 
@@ -542,7 +543,7 @@ function buildSystemPrompt(style) {
   }
 
   // Cross-session learning: inject historical patterns if available
-  const historicalPatterns = getHistoricalPatterns();
+  const historicalPatterns = getHistoricalPatterns(ws);
 
   const parts = [
     stylePrompt,
@@ -564,8 +565,8 @@ function buildSystemPrompt(style) {
 /**
  * Build the full prompt for Claude including campaign context.
  */
-function buildMessages(transcript, style, campaignCtx, previousSummaries) {
-  const systemPrompt = buildSystemPrompt(style);
+function buildMessages(transcript, style, campaignCtx, previousSummaries, ws = resolveWorkspace()) {
+  const systemPrompt = buildSystemPrompt(style, ws);
 
   let contextBlock = '';
 
@@ -695,6 +696,7 @@ function estimateAttemptCost({ systemPrompt, userMessage, transcript, config }) 
  */
 async function generateStory(transcriptPath, opts = {}) {
   const style = opts.style || config.story.defaultStyle;
+  const ws = resolveWorkspace(opts.guildId);
   const resolvedPath = path.resolve(transcriptPath);
 
   if (!fs.existsSync(resolvedPath)) {
@@ -712,11 +714,11 @@ async function generateStory(transcriptPath, opts = {}) {
   // Pre-process: classify each line as IN_GAME / META / OOC / NARRATION
   transcript = await classifyTranscriptLines(transcript);
 
-  const campaignCtx = loadCampaignContext();
-  const previousSummaries = loadPreviousChapterSummaries();
+  const campaignCtx = loadCampaignContext(ws);
+  const previousSummaries = loadPreviousChapterSummaries(ws);
 
   const { systemPrompt, userMessage } = buildMessages(
-    transcript, style, campaignCtx, previousSummaries
+    transcript, style, campaignCtx, previousSummaries, ws
   );
 
   // ─── Debug logging ──────────────────────────────────────────────
@@ -911,7 +913,7 @@ async function generateStory(transcriptPath, opts = {}) {
 
   // ─── Save verification history ───────────────────────────────────
   if (verificationResult) {
-    const historyPath = path.join(config.paths.stories, 'verification-history.json');
+    const historyPath = ws.verificationHistory;
     let history = [];
     if (fs.existsSync(historyPath)) {
       try {
@@ -921,7 +923,7 @@ async function generateStory(transcriptPath, opts = {}) {
         history = [];
       }
     }
-    const chapterNumForHistory = nextChapterNumber();
+    const chapterNumForHistory = nextChapterNumber(ws);
     history.push({
       date: new Date().toISOString(),
       sessionType: 'campaign',
@@ -932,15 +934,16 @@ async function generateStory(transcriptPath, opts = {}) {
       fabrications: verificationResult.fabrications || [],
       omissions: verificationResult.omissions || [],
     });
+    fs.mkdirSync(path.dirname(historyPath), { recursive: true });
     fs.writeFileSync(historyPath, JSON.stringify(history, null, 2), 'utf-8');
     log.info('Verification history saved', { path: historyPath, entries: history.length });
   }
 
   // Save the chapter
-  const chapterNum = nextChapterNumber();
+  const chapterNum = nextChapterNumber(ws);
   const dateStr = new Date().toISOString().slice(0, 10);
   const chapterFileName = `chapter-${String(chapterNum).padStart(2, '0')}-${dateStr}.md`;
-  const storyPath = path.join(config.paths.stories, chapterFileName);
+  const storyPath = path.join(ws.stories, chapterFileName);
 
   // Prepend metadata header
   const campaignCharacterNames = (campaignCtx?.playerCharacters || []).map(pc => pc.name).filter(Boolean);
@@ -953,19 +956,19 @@ async function generateStory(transcriptPath, opts = {}) {
     title: storyTitle,
   });
 
-  fs.mkdirSync(config.paths.stories, { recursive: true });
+  fs.mkdirSync(ws.stories, { recursive: true });
   fs.writeFileSync(storyPath, metadataHeader + '\n\n' + storyContent, 'utf-8');
   log.info('Chapter saved', { path: storyPath, words: storyContent.split(/\s+/).length });
 
   // Append summary to campaign log
   if (summary) {
     const logEntry = `\n### Chapter ${chapterNum} — ${dateStr}\n${summary}\n`;
-    fs.appendFileSync(config.paths.campaignLog, logEntry, 'utf-8');
+    fs.appendFileSync(ws.campaignLog, logEntry, 'utf-8');
     log.info('Campaign log updated');
   }
 
   // Update campaign context with any new information Claude mentioned
-  await updateCampaignContext(storyContent, summary, campaignCtx);
+  await updateCampaignContext(storyContent, summary, campaignCtx, ws);
 
   // Log session to sessions.json
   logSession({
@@ -975,7 +978,7 @@ async function generateStory(transcriptPath, opts = {}) {
     filename: chapterFileName,
     chapter: chapterNum,
     characters: campaignCharacterNames,
-  });
+  }, ws);
 
   return { storyPath, summary, chapterNum, verificationResult };
 }
@@ -992,6 +995,7 @@ async function generateStory(transcriptPath, opts = {}) {
  */
 async function generateOneShotStory(transcriptPath, opts = {}) {
   const style = opts.style || config.story.defaultStyle;
+  const ws = resolveWorkspace(opts.guildId);
   const resolvedPath = path.resolve(transcriptPath);
 
   if (!fs.existsSync(resolvedPath)) {
@@ -1010,8 +1014,8 @@ async function generateOneShotStory(transcriptPath, opts = {}) {
   transcript = await classifyTranscriptLines(transcript);
 
   // Load both contexts and merge: one-shot PCs + shared world lore from campaign
-  const campaignCtx = loadCampaignContext();
-  const oneShotCtx = loadOneShotContext();
+  const campaignCtx = loadCampaignContext(ws);
+  const oneShotCtx = loadOneShotContext(ws);
 
   // Build merged context: one-shot playerCharacters override campaign playerCharacters,
   // but all shared world lore (NPCs, locations, plot threads, flavor bank) comes from campaign
@@ -1023,10 +1027,10 @@ async function generateOneShotStory(transcriptPath, opts = {}) {
     });
   }
 
-  const previousSummaries = loadPreviousChapterSummaries();
+  const previousSummaries = loadPreviousChapterSummaries(ws);
 
   const { systemPrompt, userMessage } = buildMessages(
-    transcript, style, mergedCtx, previousSummaries
+    transcript, style, mergedCtx, previousSummaries, ws
   );
 
   log.info('Generating one-shot story with Claude', {
@@ -1181,7 +1185,7 @@ async function generateOneShotStory(transcriptPath, opts = {}) {
 
   // ─── Save verification history (shared with campaign, tagged by sessionType) ──
   if (verificationResult) {
-    const historyPath = path.join(config.paths.stories, 'verification-history.json');
+    const historyPath = ws.verificationHistory;
     let history = [];
     if (fs.existsSync(historyPath)) {
       try {
@@ -1203,6 +1207,7 @@ async function generateOneShotStory(transcriptPath, opts = {}) {
       fabrications: verificationResult.fabrications || [],
       omissions: verificationResult.omissions || [],
     });
+    fs.mkdirSync(path.dirname(historyPath), { recursive: true });
     fs.writeFileSync(historyPath, JSON.stringify(history, null, 2), 'utf-8');
     log.info('Verification history saved (one-shot)', { path: historyPath, entries: history.length });
   }
@@ -1210,7 +1215,7 @@ async function generateOneShotStory(transcriptPath, opts = {}) {
   // Save the one-shot story with different naming convention
   const dateStr = new Date().toISOString().slice(0, 10);
   const oneShotFileName = `oneshot-${dateStr}.md`;
-  const storyPath = path.join(config.paths.stories, oneShotFileName);
+  const storyPath = path.join(ws.stories, oneShotFileName);
 
   // Prepend metadata header
   const oneShotCharacterNames = (mergedCtx?.playerCharacters || []).map(pc => pc.name).filter(Boolean);
@@ -1222,7 +1227,7 @@ async function generateOneShotStory(transcriptPath, opts = {}) {
     title: oneShotTitle,
   });
 
-  fs.mkdirSync(config.paths.stories, { recursive: true });
+  fs.mkdirSync(ws.stories, { recursive: true });
   fs.writeFileSync(storyPath, metadataHeader + '\n\n' + storyContent, 'utf-8');
   log.info('One-shot story saved', { path: storyPath, words: storyContent.split(/\s+/).length });
 
@@ -1235,7 +1240,7 @@ async function generateOneShotStory(transcriptPath, opts = {}) {
     date: dateStr,
     filename: oneShotFileName,
     characters: oneShotCharacterNames,
-  });
+  }, ws);
 
   return { storyPath, summary, verificationResult, characters: oneShotCharacterNames };
 }
@@ -1372,7 +1377,7 @@ Return ONLY valid JSON (no markdown fences) in this exact format:
  * Attempt to update the campaign context with new NPCs, locations, etc.
  * discovered during this session. Uses a second, smaller Claude call.
  */
-async function updateCampaignContext(storyContent, summary, existingCtx) {
+async function updateCampaignContext(storyContent, summary, existingCtx, ws = resolveWorkspace()) {
   if (!existingCtx) return; // no context file to update
 
   try {
@@ -1407,7 +1412,8 @@ async function updateCampaignContext(storyContent, summary, existingCtx) {
       }
     }
 
-    fs.writeFileSync(config.paths.campaignContext, JSON.stringify(ctx, null, 2), 'utf-8');
+    fs.mkdirSync(path.dirname(ws.campaignContext), { recursive: true });
+    fs.writeFileSync(ws.campaignContext, JSON.stringify(ctx, null, 2), 'utf-8');
     log.info('Campaign context auto-updated', { fieldsUpdated: Object.keys(updates) });
   } catch (err) {
     // Non-fatal — just log it
@@ -1538,7 +1544,7 @@ if (require.main === module) {
  * @returns {Promise<{locations: number, characters: number, general: number}>}
  *          Counts of entries added/updated, or all zeros on failure.
  */
-async function extractFlavorDescriptions(transcript, storyText, campaignContext) {
+async function extractFlavorDescriptions(transcript, storyText, campaignContext, ws = resolveWorkspace()) {
   const empty = { locations: 0, characters: 0, general: 0 };
   try {
     if (!campaignContext) return empty;
@@ -1624,7 +1630,8 @@ ${storyText}`;
     // Save updated campaign-context.json if anything changed
     const totalAdded = counts.locations + counts.characters + counts.general;
     if (totalAdded > 0) {
-      const ctxPath = config.paths.campaignContext;
+      const ctxPath = ws.campaignContext;
+      fs.mkdirSync(path.dirname(ctxPath), { recursive: true });
       fs.writeFileSync(ctxPath, JSON.stringify(campaignContext, null, 2), 'utf-8');
       log.info('Flavor bank updated', counts);
     }

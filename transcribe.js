@@ -19,6 +19,7 @@ const path = require('path');
 const { execSync, spawn } = require('child_process');
 const config = require('./config');
 const log = require('./logger');
+const { resolveWorkspace } = require('./modules/workspace');
 
 // ─── Custom Vocabulary for AssemblyAI ─────────────────────────────
 
@@ -189,8 +190,7 @@ function preprocessAudio(inputPath) {
  * Load the speaker-map.json file that maps Discord user IDs to character names.
  * @returns {{ users: Object<string, { displayName: string, characterName: string }> }}
  */
-function loadSpeakerMap() {
-  const mapPath = path.join(config.paths.lore, 'speaker-map.json');
+function loadSpeakerMap(mapPath = path.join(config.paths.lore, 'speaker-map.json')) {
   if (!fs.existsSync(mapPath)) return { users: {} };
   try {
     return JSON.parse(fs.readFileSync(mapPath, 'utf-8'));
@@ -343,7 +343,7 @@ function matchSpeakersToUsers(utterances, sessionData) {
  * @param {{ users: Object<string, string>, characterSwitches?: Array, sessionStart?: number }} sessionData  Session data with display names
  * @returns {{ transcript: string, unmappedUsers: Array<{ userId: string, displayName: string }> }}
  */
-function applySpeakerLabels(transcript, speakerToUser, speakerMap, sessionData) {
+function applySpeakerLabels(transcript, speakerToUser, speakerMap, sessionData, speakerMapPath = path.join(config.paths.lore, 'speaker-map.json')) {
   const unmappedUsers = [];
   const labelReplacements = {};
 
@@ -379,10 +379,11 @@ function applySpeakerLabels(transcript, speakerToUser, speakerMap, sessionData) 
   // Auto-map single new unmapped user
   if (unmappedUsers.length === 1) {
     const u = unmappedUsers[0];
-    const mapPath = path.join(config.paths.lore, 'speaker-map.json');
+    const mapPath = speakerMapPath;
     try {
-      const map = loadSpeakerMap();
+      const map = loadSpeakerMap(speakerMapPath);
       map.users[u.userId] = { displayName: u.displayName, characterName: u.displayName };
+      fs.mkdirSync(path.dirname(mapPath), { recursive: true });
       fs.writeFileSync(mapPath, JSON.stringify(map, null, 2), 'utf-8');
       log.info('Auto-mapped single new speaker', { userId: u.userId, displayName: u.displayName });
     } catch (err) {
@@ -424,7 +425,7 @@ function applySpeakerLabels(transcript, speakerToUser, speakerMap, sessionData) 
           // For switches: if the line is AFTER a switch timestamp, use the new character
           // We need to figure out the original character (before any switches)
           // The speaker-map now has the LATEST character, so work backwards
-          const originalMapping = loadSpeakerMap();
+          const originalMapping = loadSpeakerMap(speakerMapPath);
           const origCharName = originalMapping.users[userId]?.characterName || playerName;
 
           // Build ordered list: first the original character, then each switch
@@ -868,10 +869,12 @@ async function transcribeDeepgram(audioPath) {
  * @param {string} audioPath  Path to the audio file
  * @param {object} [opts]     Override options
  * @param {string} [opts.service]  Force a specific backend
+ * @param {string} [opts.guildId]  Guild id for per-guild speaker-map isolation
  * @returns {Promise<string>} Path to the saved transcript file
  */
 async function transcribe(audioPath, opts = {}) {
   const service = opts.service || config.transcription.service;
+  const speakerMapPath = resolveWorkspace(opts.guildId).speakerMap;
   const resolvedPath = path.resolve(audioPath);
 
   if (!fs.existsSync(resolvedPath)) {
@@ -905,7 +908,7 @@ async function transcribe(audioPath, opts = {}) {
   const timedUtterances = result.utterances || [];
 
   // ── Speaker mapping: replace generic labels with character names ──
-  const speakerMap = loadSpeakerMap();
+  const speakerMap = loadSpeakerMap(speakerMapPath);
   const sessionData = loadSessionSpeakers();
 
   if (sessionData && transcript.includes('Speaker ')) {
@@ -940,7 +943,7 @@ async function transcribe(audioPath, opts = {}) {
       log.info('Speaker-to-user mapping result', { mappings: speakerToUser });
 
       const { transcript: mappedTranscript, unmappedUsers } = applySpeakerLabels(
-        transcript, speakerToUser, speakerMap, sessionData
+        transcript, speakerToUser, speakerMap, sessionData, speakerMapPath
       );
       transcript = mappedTranscript;
 

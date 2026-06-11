@@ -110,7 +110,7 @@ test('buildMessages includes locations and items', () => {
 suite('generate-story.js — Chapter Numbering');
 
 test('nextChapterNumber function exists in source', () => {
-  assertIncludes(genSource, 'function nextChapterNumber()');
+  assertIncludes(genSource, 'function nextChapterNumber(');
 });
 
 test('chapter numbering parses existing chapter files', () => {
@@ -134,7 +134,8 @@ test('story is saved as markdown file', () => {
 });
 
 test('campaign log is appended with chapter summary', () => {
-  assertIncludes(genSource, 'fs.appendFileSync(config.paths.campaignLog');
+  // Campaign log path is now per-guild via the resolved workspace (ws.campaignLog).
+  assertIncludes(genSource, 'fs.appendFileSync(ws.campaignLog');
 });
 
 test('session summary is extracted from Claude output', () => {

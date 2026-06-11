@@ -45,7 +45,9 @@ function findRecapChannel(guild, fallbackChannel) {
  * Returns { title, body } where body has the title line stripped.
  */
 function extractStoryTitle(storyContent) {
-  const lines = storyContent.split('\n');
+  // Strip leading metadata comment block (<!-- Session Metadata ... -->) if present
+  const stripped = storyContent.replace(/^<!--[\s\S]*?-->\s*/m, '').trimStart();
+  const lines = stripped.split('\n');
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
     if (line.startsWith('# ')) {
@@ -56,7 +58,7 @@ function extractStoryTitle(storyContent) {
     // Skip blank lines at the top
     if (line !== '') break;
   }
-  return { title: null, body: storyContent };
+  return { title: null, body: stripped };
 }
 
 /**
@@ -113,9 +115,9 @@ function splitForEmbeds(text, maxLen = 4000) {
 /**
  * Load campaign context to extract PC names for the summary embed.
  */
-function loadCampaignContextForRecap() {
+function loadCampaignContextForRecap(ws = null) {
   try {
-    const ctxPath = config.paths.campaignContext;
+    const ctxPath = ws ? ws.campaignContext : config.paths.campaignContext;
     if (!fs.existsSync(ctxPath)) return null;
     return JSON.parse(fs.readFileSync(ctxPath, 'utf-8'));
   } catch { return null; }
@@ -149,6 +151,7 @@ function buildCommandEmbed() {
         name: 'After Session',
         value: [
           '`!recap` / `/recap` \u2014 Re-post the latest story chapter',
+          '`!regenerate` / `/regenerate` \u2014 Reprocess the most recent recording from scratch',
           '`!speakers` / `/speakers` \u2014 Map or view speaker-to-character assignments',
           '`!addnpc Name | Role | Description | Relationship` \u2014 Add a new NPC to campaign context',
           '`!listnpcs` / `/listnpcs` \u2014 List all known NPCs by relationship',

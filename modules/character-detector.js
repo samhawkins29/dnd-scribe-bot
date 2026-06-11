@@ -69,14 +69,17 @@ function getEarlyTranscriptPortion(transcript) {
 
 // ─── Context file I/O ─────────────────────────────────────────────
 
-function getContextPath(sessionType) {
+function getContextPath(sessionType, ws) {
+  if (ws) {
+    return sessionType === 'oneshot' ? ws.oneshotContext : ws.campaignContext;
+  }
   return sessionType === 'oneshot'
     ? config.paths.oneshotContext
     : config.paths.campaignContext;
 }
 
-function loadContext(sessionType) {
-  const ctxPath = getContextPath(sessionType);
+function loadContext(sessionType, ws) {
+  const ctxPath = getContextPath(sessionType, ws);
   if (!ctxPath || !fs.existsSync(ctxPath)) {
     return { ctx: { playerCharacters: [] }, ctxPath };
   }
@@ -128,14 +131,14 @@ function parseJsonArray(rawText) {
  * @param {'campaign'|'oneshot'} sessionType  Which context file to read/update.
  * @returns {Promise<Array<{speakerLabel: string, characterName: string, race: string, class: string, isNew?: boolean}>>}
  */
-async function detectCharacterIntroductions(transcript, sessionType = 'campaign') {
+async function detectCharacterIntroductions(transcript, sessionType = 'campaign', ws = null) {
   if (!transcript || !transcript.trim()) {
     log.warn('Empty transcript passed to character detector');
     return [];
   }
 
   const earlyTranscript = getEarlyTranscriptPortion(transcript);
-  const { ctx, ctxPath } = loadContext(sessionType);
+  const { ctx, ctxPath } = loadContext(sessionType, ws);
 
   const knownCharacters = (ctx.playerCharacters || [])
     .filter(pc => pc && pc.name && pc.race && pc.class)

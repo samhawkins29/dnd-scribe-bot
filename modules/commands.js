@@ -8,8 +8,29 @@ const path = require('path');
 const config = require('../config');
 const log = require('../logger');
 const { sessions, startRecording, stopRecording, handleSwitchChar, findLatestSpeakersFile } = require('./recorder');
-const { runPipelineWithUpdates, runOneShotPipelineWithUpdates, repostLatestRecap } = require('./pipeline');
+const { runPipelineWithUpdates, runOneShotPipelineWithUpdates, repostLatestRecap, regenerateLatest } = require('./pipeline');
+const { isProcessing, getProcessingInfo } = require('./recovery');
 const { makeEmbed, buildCommandEmbed } = require('./discord-utils');
+const { resolveWorkspace } = require('./workspace');
+
+/**
+ * Build the "still processing your last session" message for both
+ * !record and /record.  Returns an embed-ready makeEmbed() object.
+ */
+function processingBusyEmbed(guildId) {
+  const info = getProcessingInfo(guildId);
+  const elapsedMin = info ? Math.round((Date.now() - info.startedAt) / 60000) : null;
+  const audioName = info ? path.basename(info.audioPath) : 'a previous recording';
+  const waitNote = elapsedMin != null
+    ? ` (started ~${elapsedMin}m ago)`
+    : '';
+  return makeEmbed(
+    'Still processing your last session',
+    `I\'m still processing **${audioName}**${waitNote}. Please wait until that finishes before starting a new recording. ` +
+    `This prevents the previous session from being overwritten.`,
+    false,
+  );
+}
 
 // ─── Slash command definitions ──────────────────────────────────────
 
@@ -26,6 +47,9 @@ const slashCommands = [
   new SlashCommandBuilder()
     .setName('recap')
     .setDescription('Re-post the latest story chapter to this channel.'),
+  new SlashCommandBuilder()
+    .setName('regenerate')
+    .setDescription('Reprocess the most recent recording from scratch.'),
   new SlashCommandBuilder()
     .setName('switchchar')
     .setDescription('Switch your active character mid-session.')
@@ -62,6 +86,9 @@ function registerPrefixCommands(client) {
     const content = message.content.trim().toLowerCase();
 
     if (content === '!record') {
+      if (isProcessing(message.guildId)) {
+        return message.reply({ embeds: [processingBusyEmbed(message.guildId)] });
+      }
       const voiceChannel = message.member?.voice?.channel;
       if (!voiceChannel) {
         return message.reply({ embeds: [makeEmbed('Error', 'You must be in a voice channel first!', false)] });
@@ -75,6 +102,9 @@ function registerPrefixCommands(client) {
     }
 
     if (content === '!record-one-shot') {
+      if (isProcessing(message.guildId)) {
+        return message.reply({ embeds: [processingBusyEmbed(message.guildId)] });
+      }
       const voiceChannel = message.member?.voice?.channel;
       if (!voiceChannel) {
         return message.reply({ embeds: [makeEmbed('Error', 'You must be in a voice channel first!', false)] });
@@ -85,6 +115,14 @@ function registerPrefixCommands(client) {
         result.message,
         result.success
       )] });
+    }
+
+    if (content === '!regenerate') {
+      // regenerateLatest performs its own busy check & posts feedback.
+      regenerateLatest(message.channel).catch(err => {
+        log.error('!regenerate handler crashed', { error: err.message, stack: err.stack });
+      });
+      return;
     }
 
     if (content === '!stop') {
@@ -143,7 +181,7 @@ function registerPrefixCommands(client) {
       const [name, role, description, relationship] = parts;
 
       try {
-        const ctxPath = config.paths.campaignContext;
+        const ctxPath = resolveWorkspace(message.guildId).campaignContext;
         const ctx = JSON.parse(fs.readFileSync(ctxPath, 'utf-8'));
         if (!ctx.recurringNPCs) ctx.recurringNPCs = [];
 
@@ -171,7 +209,7 @@ function registerPrefixCommands(client) {
     // ── !speakers ────────────────────────────────────────────────────
     if (message.content.trim().toLowerCase().startsWith('!speakers')) {
       const raw = message.content.trim().slice('!speakers'.length).trim();
-      const speakerMapPath = path.join(config.paths.lore, 'speaker-map.json');
+      const speakerMapPath = resolveWorkspace(message.guildId).speakerMap;
 
       // Load existing map
       let speakerMap = { users: {} };
@@ -261,6 +299,7 @@ function registerPrefixCommands(client) {
         }
       }
 
+      fs.mkdirSync(path.dirname(speakerMapPath), { recursive: true });
       fs.writeFileSync(speakerMapPath, JSON.stringify(speakerMap, null, 2), 'utf-8');
       log.info('Speaker map updated via !speakers', { mapped, total: Object.keys(speakerMap.users).length });
 
@@ -272,7 +311,7 @@ function registerPrefixCommands(client) {
     // ── !listnpcs ────────────────────────────────────────────────────
     if (content === '!listnpcs') {
       try {
-        const ctx = JSON.parse(fs.readFileSync(config.paths.campaignContext, 'utf-8'));
+        const ctx = JSON.parse(fs.readFileSync(resolveWorkspace(message.guildId).campaignContext, 'utf-8'));
         const npcs = ctx.recurringNPCs || [];
 
         if (npcs.length === 0) {
@@ -327,6 +366,9 @@ function registerSlashCommands(client) {
     if (!interaction.isChatInputCommand()) return;
 
     if (interaction.commandName === 'record') {
+      if (isProcessing(interaction.guildId)) {
+        return interaction.reply({ embeds: [processingBusyEmbed(interaction.guildId)], ephemeral: true });
+      }
       const voiceChannel = interaction.member?.voice?.channel;
       if (!voiceChannel) {
         return interaction.reply({
@@ -344,6 +386,9 @@ function registerSlashCommands(client) {
     }
 
     if (interaction.commandName === 'record-one-shot') {
+      if (isProcessing(interaction.guildId)) {
+        return interaction.reply({ embeds: [processingBusyEmbed(interaction.guildId)], ephemeral: true });
+      }
       const voiceChannel = interaction.member?.voice?.channel;
       if (!voiceChannel) {
         return interaction.reply({
@@ -358,6 +403,18 @@ function registerSlashCommands(client) {
         result.message,
         result.success
       )] });
+    }
+
+    if (interaction.commandName === 'regenerate') {
+      await interaction.deferReply();
+      try {
+        await regenerateLatest(interaction.channel);
+        await interaction.editReply({ embeds: [makeEmbed('Regenerate triggered', 'Reprocessing the most recent recording. Updates will appear in this channel.', true)] });
+      } catch (err) {
+        log.error('/regenerate handler crashed', { error: err.message, stack: err.stack });
+        await interaction.editReply({ embeds: [makeEmbed('Error', `Failed to regenerate: ${err.message}`, false)] }).catch(() => {});
+      }
+      return;
     }
 
     if (interaction.commandName === 'stop') {
@@ -414,7 +471,7 @@ function registerSlashCommands(client) {
       const relationship = interaction.options.getString('relationship') || 'Unknown';
 
       try {
-        const ctxPath = config.paths.campaignContext;
+        const ctxPath = resolveWorkspace(interaction.guildId).campaignContext;
         const ctx = JSON.parse(fs.readFileSync(ctxPath, 'utf-8'));
         if (!ctx.recurringNPCs) ctx.recurringNPCs = [];
 
@@ -437,7 +494,7 @@ function registerSlashCommands(client) {
     // ── /listnpcs ────────────────────────────────────────────────────
     if (interaction.commandName === 'listnpcs') {
       try {
-        const ctx = JSON.parse(fs.readFileSync(config.paths.campaignContext, 'utf-8'));
+        const ctx = JSON.parse(fs.readFileSync(resolveWorkspace(interaction.guildId).campaignContext, 'utf-8'));
         const npcs = ctx.recurringNPCs || [];
 
         if (npcs.length === 0) {
@@ -482,7 +539,7 @@ function registerSlashCommands(client) {
     // ── /speakers ──────────────────────────────────────────────────
     if (interaction.commandName === 'speakers') {
       const raw = interaction.options.getString('mappings') || '';
-      const speakerMapPath = path.join(config.paths.lore, 'speaker-map.json');
+      const speakerMapPath = resolveWorkspace(interaction.guildId).speakerMap;
 
       let speakerMap = { users: {} };
       if (fs.existsSync(speakerMapPath)) {
@@ -558,6 +615,7 @@ function registerSlashCommands(client) {
         }
       }
 
+      fs.mkdirSync(path.dirname(speakerMapPath), { recursive: true });
       fs.writeFileSync(speakerMapPath, JSON.stringify(speakerMap, null, 2), 'utf-8');
       log.info('Speaker map updated via /speakers', { mapped, total: Object.keys(speakerMap.users).length });
 

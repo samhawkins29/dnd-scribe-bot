@@ -18,12 +18,14 @@ const { callClaude } = require('./anthropic-client');
 
 // ─── Known-term collection ────────────────────────────────────────
 
-function collectKnownTerms() {
+function collectKnownTerms(ws) {
   const characters = new Set();
   const npcs = new Set();
   const locations = new Set();
 
-  const ctxPaths = [config.paths.campaignContext, config.paths.oneshotContext]
+  const ctxPaths = (ws
+    ? [ws.campaignContext, ws.oneshotContext]
+    : [config.paths.campaignContext, config.paths.oneshotContext])
     .filter(Boolean);
 
   for (const ctxPath of ctxPaths) {
@@ -73,10 +75,10 @@ function collectKnownTerms() {
  * @param {string} transcript  The full transcript text.
  * @returns {Promise<string>}  Corrected transcript (or original on failure).
  */
-async function correctTranscript(transcript) {
+async function correctTranscript(transcript, ws = null) {
   if (!transcript || !transcript.trim()) return transcript;
 
-  const known = collectKnownTerms();
+  const known = collectKnownTerms(ws);
   const totalKnown = known.characters.length + known.npcs.length + known.locations.length;
   if (totalKnown === 0) {
     log.info('Corrector: no known names available — skipping correction pass');
