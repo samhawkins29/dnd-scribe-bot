@@ -3,18 +3,6 @@
   "setting": "A classic high fantasy vibe with a stirring dark undertone just beneath the surface, advanced technology powered by magic is beginning to become more widespread",
   "playerCharacters": [
     {
-      "name": "Breme",
-      "player": "Sam",
-      "race": "Human",
-      "class": "Rogue",
-      "level": 2,
-      "backstory": "Breme grew up as an orphan scraping by in Waterdeep's Dock Ward, surviving through pickpocketing, burglary, and running with small-time criminal crews. After a near-fatal job gone wrong, he decided he'd had enough of the endless cycle of theft and fear. He turned his back on his old life and joined the Adventurers Guild, hoping his street-honed skills could finally be used for something better than lining his own pockets. The Guild has just assigned him to a new adventuring group, sending him to meet them at a designated tavern in the North Ward. This is his chance at a fresh start — if he can keep his sticky fingers to himself and prove he's more than just another Dock Ward criminal.",
-      "personalityTraits": "Cynical and street-smart with a dry, sarcastic sense of humor. Quick-witted and talkative, especially when he's trying to hide his nerves. He's actively working on being more honest and reliable, but old habits make him instinctively case every room for valuables and escape routes. Once he warms up to people, he becomes surprisingly loyal and protective.",
-      "bonds": "The Adventurers Guild — they gave him a real shot at redemption when no one else would. Waterdeep's street orphans, whom he quietly tries to help when he can. A small, worn locket containing a faded portrait he believes is his mother. His new adventuring party — he's determined to prove he belongs with them.",
-      "flaws": "Still fights a strong temptation to steal when the opportunity looks too easy, especially under stress. Deeply distrustful of authority figures and institutions. Tends to assume the worst in new situations and people, which can make teamwork difficult at first. His survival instincts sometimes make him act selfishly before thinking of the group.",
-      "appearance": "A scruffy 23-year-old human with messy black hair, sharp blue eyes, and pale skin. Standing 5'4\" tall and weighing 160 lbs, he has a medium build that's wiry and quick rather than muscular. He wears practical dark leathers and a hooded cloak for blending into shadows, with soft boots perfect for silent movement. A faint scar crosses his left cheek. He moves with the fluid, alert grace of someone who's spent years dodging the City Watch."
-    },
-    {
       "name": "Countess Caith",
       "player": "Judy",
       "race": "Silver Dragonborn",
@@ -51,30 +39,12 @@
       "appearance": "A solid 4'11\" with a beard that goes down to his waist. His hands are scarred from his time in the smithy and has a permanent smell of burnt beard hair."
     },
     {
-      "name": "Breme",
-      "level": 3
-    },
-    {
-      "name": "Countess Caith",
-      "level": 3
-    },
-    {
-      "name": "Meridio Scientia",
-      "level": 3
-    },
-    {
-      "name": "Frank Smith",
-      "level": 3
-    }
-  ],
-  "inactiveCharacters": [
-    {
       "name": "Thrain Ironwatch",
       "player": "Sam",
       "race": "Warforged",
       "class": "Cleric",
       "level": 2,
-      "status": "inactive - returning in a few weeks",
+      "persistsToCampaign": true,
       "backstory": "Thrain was once a twelve-year-old hill dwarf farm boy who died protecting his family from goblin raiders. His dying wish to Helm was to protect the helpless. Fourteen years ago, Lantan artificer Zindle Gearwhistle used stolen warforged blueprints and a divine ritual to place the boy's soul into a new iron body. Now a construct guardian of Helm's Hall orphanage in Waterdeep, Thrain has spent the last decade watching over orphaned children with quiet, tireless devotion. A recent vision from Helm has called him to leave the temple and join a band of wandering adventurers, extending his eternal watch to the open road and the weak who travel it.",
       "personalityTraits": "Stoic and duty-bound, speaks in a calm, slightly metallic monotone. Rarely shows strong emotion, but is deeply protective of the vulnerable, especially children. Quotes Helm's creeds often.",
       "bonds": "Sworn to never betray his trust as a guardian. Deeply tied to Helm's Hall orphanage and the children he watched over for ten years. Considers High Watcher Kiber Ederick a father figure.",
@@ -82,7 +52,14 @@
       "appearance": "A tall, heavily built warforged standing 6'2\" and weighing 280 lbs. Dark iron plating etched with Dethek runes across the brow and chest. A prominent gauntlet holy symbol of Helm is fused to his chestplate. His face is a smooth, featureless metal mask with glowing red eyes and a simple slit for a mouth. Carries a warhammer and shield, moves with deliberate, mechanical precision."
     }
   ],
+  "inactiveCharacters": [],
   "recurringNPCs": [
+    {
+      "name": "Breme",
+      "role": "Former PC / Background Rogue",
+      "description": "A scruffy 23-year-old human with messy black hair, sharp blue eyes, and pale skin. Standing 5'4\" and wiry, he moves with the fluid, alert grace of someone who spent years dodging the City Watch. Cynical and street-smart with dry sarcastic humor. Originally joined the Adventurers Guild seeking redemption from a life of petty crime in Waterdeep's Dock Ward. Now largely acts as background support rather than a primary adventurer.",
+      "relationship": "Former party member. Do not build main storylines around Breme or treat him as a player character in campaign sessions — he is a background NPC after the events of his one-shot. He may appear on the periphery but is not a protagonist."
+    },
     {
       "name": "Bartho",
       "role": "Quest giver / Gatehouse Guard / Slacker",
@@ -195,7 +172,7 @@
       "name": "Rustwing",
       "role": "Treasure Collector",
       "description": "This baby copper dragon sits upon its meager horde content with her kobold support for now. Petulant. Rustwing is a sulky, irritable dragon, often becoming easily annoyed when not getting her own way. Abandoned. Rustwing misses her parents and has a sadness that the kobolds found her egg unprotected.",
-      "relationship": "Friendly - the Party treated Rustwing with respect and added to her hoard"
+      "relationship": "Hostile - Rustwing breathed fire on the party, knocking both Frank and Countess unconscious. The party barricaded her door and fled."
     },
     {
       "name": "Tak",
@@ -240,10 +217,22 @@
       "relationship": "Unknown - Not yet encountered, but evidence suggests they may be the true power behind the chaos"
     },
     {
-      "name": "Rustwing",
-      "role": "Treasure Collector",
-      "description": "This baby copper dragon sits upon its meager horde content with her kobold support for now. Petulant. Rustwing is a sulky, irritable dragon, often becoming easily annoyed when not getting her own way. Abandoned. Rustwing misses her parents and has a sadness that the kobolds found her egg unprotected.",
-      "relationship": "Hostile - Rustwing breathed fire on the party, knocking both Frank and Countess unconscious. The party barricaded her door and fled."
+      "name": "Reginald",
+      "role": "Dog / Animal Companion",
+      "description": "A friendly dog found playing with Cornflower's missing goats.",
+      "relationship": "Friendly - encountered during the goat retrieval task"
+    },
+    {
+      "name": "Winvarle",
+      "role": "Castellan / Knight",
+      "description": "The keep's noble commander leads his soldiers whenever the keep comes under attack. Idealistic. Winvarle's ideals are rooted in lofty notions of righteousness. Oblivious. While he excels at battle strategy, Winvarle scarcely knows the inner workings of his own keep.",
+      "relationship": "Friendly - Personally briefed the party, provided upgraded tokens, a magical tracking map, and a sending stone, and entrusted them with investigating the dark clouds over the Caves of Chaos"
+    },
+    {
+      "name": "Ogre Mercenary",
+      "role": "Guard / Mercenary (Deceased)",
+      "description": "A large ogre hired as a mercenary guard at the entrance to the Kobold Caves. Demanded to eat Frank the dwarf as payment for passage rather than accepting tribute or hobgoblin bodies.",
+      "relationship": "Hostile - Killed by the party after refusing to negotiate reasonably"
     }
   ],
   "majorPlotThreads": [
@@ -255,7 +244,19 @@
     "Cult activity is escalating to human sacrifice and blood rituals involving redcaps",
     "There may be imposters or doppelgangers infiltrating Castle Keep, as Bartho was seen in two places at once",
     "The chaos in the caves appears to be deliberately orchestrated by a hierarchy of monsters, with a greater dragon called Cindertooth potentially at the top",
-    "The party is badly wounded and outmatched by the deeper threats in the Caves of Chaos, needing to regroup and grow stronger before venturing further"
+    "The party is badly wounded and outmatched by the deeper threats in the Caves of Chaos, needing to regroup and grow stronger before venturing further",
+    "Ruckus has teased a new quest for the party to undertake",
+    "The party has reported their findings about the cult ritual, redcap, and Ned's murder to Dwern the scribe, bringing official attention to the cult threat",
+    "Meridio is planning to purchase a spellbook to expand his magical capabilities",
+    "A massive dome of transmutation and abjuration magic is slowly descending over the Caves of Chaos, generated by a ritual source at its center — estimated to reach ground level in approximately two days, creating permanent darkness over the entire cave complex",
+    "A small dragon silhouette was spotted within the magical dome over the caves, possibly connected to Cindertooth or another draconic threat",
+    "Lizardfolk tracks were found crossing the road near the river on the way to the Caves of Chaos, suggesting a new faction moving through the area",
+    "Winvarle has directly tasked the party with investigating the mysterious dark clouds over the Caves of Chaos",
+    "The dome over the Caves of Chaos is confirmed to reach ground level the day after Green Grass",
+    "A dragon's screech echoed through the caves as the party prepared to withdraw from the Hobgoblin Lair — suggesting an imminent draconic encounter",
+    "The party has established a bridge across the pit trap at the Kobold Caves entrance, giving them easier access",
+    "The kobold inhabitants are terrified and not hostile to the party, allowing them to rest inside the caves",
+    "Time pressure is critical — the dome over the Caves of Chaos continues descending with roughly two days remaining (tonight and tomorrow night to accomplish objectives)"
   ],
   "locationsVisited": [
     "Castle Keep",
@@ -265,29 +266,60 @@
     "Hobgoblin Lair",
     "Ned's Cabin",
     "Wilderness surrounding Castle Keep",
-    "Ned's Cabin",
-    "Cult Ritual Clearing"
+    "Cult Ritual Clearing",
+    "Kobold Caves - Interior (deeper sections)"
   ],
   "itemsOfSignificance": [
     "Ned's warhammer and shield",
     "Studded leather armor from Ned's workshop",
     "Healing potions found in Ned's cabin",
     "Rustwing's small hoard",
-    "Goblin loot and treasure"
+    "Goblin loot and treasure",
+    "Upgraded adventurer tokens from Winvarle",
+    "Magical tracking map that shows party location",
+    "Sending stone for communication with Castle Keep",
+    "Half plate armor looted from hobgoblin captain",
+    "Magical shortbow +1 found in trapped iron strongbox in Hobgoblin Lair",
+    "Gold and fine furs from hobgoblin strongbox",
+    "Expensive bottle of wine hidden in hobgoblin mess hall"
   ],
   "flavorBank": {
     "locations": {
-      "Castle Keep": "The stone walls carry the faint smell of woodsmoke and damp stone. Guards patrol the ramparts in pairs.",
-      "Caves of Chaos": "The air grows thick and stale. Water drips somewhere in the darkness, each drop echoing off unseen walls.",
-      "The Wilderness": "Ancient trees press close, their canopy blocking most sunlight. The forest floor is soft with decades of fallen leaves."
+      "Kobold Caves - Entrance": "The entrance features a pit trap that the party has bridged for easier passage. An ogre mercenary formerly guarded the area but has been slain. The kobold inhabitants inside are terrified and cowed, not posing a threat to the party.",
+      "Kobold Caves - Deeper Sections": "Deeper tunnels within the Kobold Caves where a gray ooze lurked and ambushed the party, dealing significant acid damage before being destroyed.",
+      "Caves of Chaos - Canyon": "A giant dark valley shrouded in a descending dome of dark magical clouds that has a couple days before touching the ground. Dense fog and mist cling to the cave mouths, making visibility extremely poor. The canyon contains multiple cave complexes (Kobold Caves, Goblin Caves, Hobgoblin Lair, and deeper cult crypts) on different sides of a gorge. A red dragon patrols the skies within the clouds, and an ogre mercenary was stationed outside the Kobold Caves.",
+      "Goblin Caves": "Previously cleared by the party, but over the couple of days since, something has come in and eaten all the goblins — every last one gone. The caves now reek of blood and emptiness.",
+      "Hobgoblin Lair": "A cave complex across the gorge from the Kobold Caves where the party fought and defeated hobgoblins. Used to store the party's wagon. Opening a door shone torchlight out — the only sign of light in the giant dark valley — alerting the dragon to their presence.",
+      "Kobold Caves - Interior": "Contains a pile of dog bones with the stench of fresh and rotten blood. The kobold inhabitants have kids and babies, small creatures digging around in the southern areas. There is a pond in a central room where a golden chalice worth 100 gold pieces sat at the bottom and a magical origami folding boat floated on the surface. An owlbear occupied a deeper chamber, eating prey near a 10-foot ledge at the chamber's south end that leads into man-made passageways.",
+      "Cult Crypt (above Owlbear Chamber)": "Accessed by climbing a 10-foot ledge from the owlbear's chamber, leading to paved man-made passageways with stairs going both up and down. Contains a cultist barracks room with beds where robed cultists sleep and chat. Zombies guard the stairways below. Deeper in lies a room with a large sarcophagus from which an undead creature in cultist robes emerged. The cultists chant 'Hail to chaos, soon my spirit will join you' as they attack."
     },
     "characters": {
-      "Breme": "He moves with the fluid, alert grace of someone who's spent years dodging the City Watch.",
-      "Countess Caith": "Her silver scales catch the light like liquid mercury, purple braids swinging behind her."
+      "Countess Caith": "Her silver scales catch the light like liquid mercury, purple braids swinging behind her.",
+      "Thrain Ironwatch": "A warforged war cleric with iron frame and sentinel's stillness, who doesn't sleep or eat but enters an 8-hour standby mode. He stands motionless in hallways through the night, keeping watch. He has high passive perception, darkvision, cunning action, and carries a warhammer and shield. His token grants him a thief's experience. He speaks in terse, threatening declarations like 'Drop your blades or face the unseen eye.'",
+      "Meridio Scientia": "A robed wizard-cleric with a scholarly disposition, prone to murmuring and muttering to himself as he works through problems aloud. He has high arcana skill (+10), carries a staff, and leans into his wizard abilities with theatrical flair — wielding lightning arcs from his staff tip and flames in his other hand. Slight of build with a strength of 10. His token grants him a farmer-cleric's pastoral knowledge.",
+      "Frank": "A gruff, taciturn dwarf who views meals as fuel rather than pleasure. Strong enough to carry heavy loads, he wields a magical dwarven shortbow, a warhammer with push mastery, and newly acquired javelins from a slain ogre. His token grants him the experience of a happy-go-lucky bard who likes to tell tales, sitting uncomfortably over his soldier's frame — he distributes bardic inspiration to allies like Meridio. A Battle Master fighter who uses superiority dice for techniques like goading strike and distracting strike. He rolls either natural 20s or natural 1s with nothing in between. When he crits, he breaks beaks and sends enemies reeling; his distracting strikes grant advantage to the next attacker.",
+      "Winvarle": "The keep's administrator who sits at the top of the dais with Elandra. He greets adventurers warmly but is visibly uncomfortable ordering them around like soldiers, clapping his hands when wrapping up briefings.",
+      "Elandra": "A drow advisor at Castle Keep who sits alongside Winvarle on the dais. She gives sharp, measured assessments and squints suspiciously at Bartho. She tasks the party directly and speaks with pointed authority.",
+      "Bartho": "A scruffy, reluctant guard who would rather sleep or drink than patrol. He begrudgingly rubs sleep from his eyes and delivers short, unenthusiastic reports. He makes transparent excuses to avoid searching for Pedro the Bandit King, hoping his superiors will forget his assignments.",
+      "Zindel Gearwhistle": "A Lantan artificer gnome who has recently arrived in town, taking over Andrella's private quarters in the eastern tower. He upgrades adventurer tokens and creates magical maps that track party members' locations.",
+      "Jerry": "A young halfling bard thought lost at sea who has resurfaced at the inn, immediately trying to chat up other bards with lines like 'you must be this tall to get on this ride' before launching into dramatic tales of maritime survival.",
+      "Breme": "A rogue who lacks darkvision and operates at disadvantage in darkness. He scouts ahead, flanks enemies for sneak attacks dealing double damage, and attempts deception — such as trying to convince cultists that 'the master sent me to retrieve you for the ceremony.' He investigates bodies and rooms methodically, and is always watching from the shadows. His stealth and perception make him valuable despite his visual limitations in the dark."
     },
     "general": [
-      "Magic hums faintly in the technology becoming more common in larger cities.",
-      "The Calendar of Haptos marks the passage of days."
+      "The party defeated an ogre mercenary guarding the Kobold Caves who demanded to eat Frank rather than accept tribute",
+      "A gray ooze ambushed the party in the deeper sections of the Kobold Caves, dealing significant acid damage before being destroyed",
+      "The party constructed a bridge over the pit trap at the Kobold Caves entrance for safe passage",
+      "A dome of dark magical clouds is descending over the Caves of Chaos, estimated to touch the ground in a couple of days, forming a giant dome over the entire cave complex",
+      "A red dragon that dislikes the party patrols within the descending cloud dome, with an ogre mercenary stationed below watching it fly",
+      "The party defeated a second ogre mercenary outside the Kobold Caves after failed negotiations — the ogre demanded to eat Frank (dwarves being ogres' favorite food) rather than accept hobgoblin tribute",
+      "Thrain built a stable bridge over the Kobold Caves pit trap in 10 minutes using timber, the ogre's great club as a central brace, and Frank's gut-check carpentry assistance",
+      "The party discovered a magical Boat of Folding (origami paper boat) and a golden chalice worth 100 gold pieces in a pond inside the Kobold Caves",
+      "Something ate all the goblins in the Goblin Caves over the couple of days since the party cleared them",
+      "A dead human adventurer was found in a narrow crevice near the owlbear's chamber — killed by the owlbear, crawled into a gap too narrow to be eaten, died there with a few coins and an empty lantern",
+      "Cultists wearing robes and wielding sickles were found living in a crypt above the owlbear chamber, chanting 'Hail to chaos, soon my spirit will join you' — they kept zombies as guards and each carried exactly 5 gold pieces as if recently paid wages",
+      "Zombies possess Undead Fortitude — making Constitution saving throws to stay at 1 hit point instead of dying, unless killed by radiant damage which bypasses this ability",
+      "The party has tonight and tomorrow night to retrieve a banner from the Fortress Keep",
+      "An undead creature emerged from a sarcophagus in the cult crypt, grabbing Thrain's wrist — the session ended on a cliffhanger with initiative rolled"
     ]
   }
 }

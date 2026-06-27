@@ -1,1 +1,28 @@
-{ "users": {} }
+{
+  "users": {
+    "546289602009497600": {
+      "displayName": "Drew",
+      "characterName": "DM"
+    },
+    "550661113516392479": {
+      "displayName": "Sam",
+      "characterName": "Thrain"
+    },
+    "322017373987143681": {
+      "displayName": "Countess",
+      "characterName": "Countess"
+    },
+    "306790019404660736": {
+      "displayName": "Gemmy Gem",
+      "characterName": "Meridio"
+    },
+    "411916947773587456": {
+      "displayName": "User_7456",
+      "characterName": "User_7456"
+    },
+    "784141056617873420": {
+      "displayName": "jdlockhart",
+      "characterName": "Frank"
+    }
+  }
+}
